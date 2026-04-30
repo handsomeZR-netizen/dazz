@@ -7,3 +7,6 @@ dist
 # vite-plugin-mkcert generated certs
 .mkcert
 *.pem
+
+# local worktrees nested under repo root
+.worktrees

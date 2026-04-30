@@ -16,6 +16,7 @@ import { bindSwipe } from './input/gestures.js';
 import { bindKeyboard } from './input/keyboard.js';
 import { cameraSource, imageSource } from './source.js';
 import { processBatch } from './batch.js';
+import { centerCrop } from './utils/frame.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -276,25 +277,7 @@ function drawFrame() {
   if (currentSource.isReady() && canvas.width) {
     const cw = canvas.width;
     const ch = canvas.height;
-    const vw = currentSource.intrinsicW;
-    const vh = currentSource.intrinsicH;
-    const cr = cw / ch;
-    const vr = vw / vh;
-    let sx;
-    let sy;
-    let sw;
-    let sh;
-    if (vr > cr) {
-      sh = vh;
-      sw = vh * cr;
-      sx = (vw - sw) / 2;
-      sy = 0;
-    } else {
-      sw = vw;
-      sh = vw / cr;
-      sx = 0;
-      sy = (vh - sh) / 2;
-    }
+    const { uvOffset, uvScale } = centerCrop(currentSource.intrinsicW, currentSource.intrinsicH, cw, ch);
 
     noiseOffset = (noiseOffset + 17) & (NOISE_SIZE * NOISE_SIZE - 1);
     const nx = (noiseOffset & (NOISE_SIZE - 1)) / NOISE_SIZE;
@@ -302,8 +285,8 @@ function drawFrame() {
     if (flashFlare > 0) flashFlare = Math.max(0, flashFlare - 0.04);
 
     renderer.draw(currentSource.element, {
-      uvOffset: [sx / vw, sy / vh],
-      uvScale: [sw / vw, sh / vh],
+      uvOffset,
+      uvScale,
       mirror: currentSource.kind === 'camera' && usingFront,
       strength,
       preset: presetStrip.current,
