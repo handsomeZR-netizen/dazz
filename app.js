@@ -48,6 +48,7 @@
       stampColor: '#ff8a3d',
       stampGlow:  'rgba(255, 138, 61, 0.7)',
       brandLabel: 'NC-FILM',
+      developMs: 1500,
       grainAmp: 7,
       vignette: 0.28,
       mono: false,
@@ -68,6 +69,7 @@
       stampColor: '#ffc857',
       stampGlow:  'rgba(255, 200, 87, 0.6)',
       brandLabel: 'FX-CINE',
+      developMs: 0,
       grainAmp: 4,
       vignette: 0.18,
       mono: false,
@@ -88,6 +90,7 @@
       stampColor: '#f4ede0',
       stampGlow:  'rgba(244, 237, 224, 0.45)',
       brandLabel: 'GRAIN ZERO',
+      developMs: 0,
       grainAmp: 14,
       vignette: 0.34,
       mono: true,
@@ -105,6 +108,7 @@
       stampColor: '#ff5b5b',
       stampGlow:  'rgba(255, 91, 91, 0.7)',
       brandLabel: 'D · SINGLE',
+      developMs: 3000,
       grainAmp: 9,
       vignette: 0.22,
       mono: false,
@@ -635,12 +639,14 @@
     const out = composeOutput(canvas, borderId, preset, showDate);
 
     const presetId = preset.id;
+    const developMs = preset.developMs || 0;
     out.toBlob(async (blob) => {
       if (!blob) { showToast('保存失败'); return; }
       try {
-        await Gallery.add(blob, { presetId, borderId });
+        await Gallery.add(blob, { presetId, borderId, developMs });
         const dropped = await Gallery.trim(MAX_PHOTOS);
         if (dropped) showToast(`已保留最近 ${MAX_PHOTOS} 张`);
+        else if (developMs > 0) showToast(`已捕获 · 显影 ${(developMs / 1000).toFixed(1)}s`);
         await refreshThumb();
       } catch (e) {
         showToast('保存失败：' + (e.message || e.name));
@@ -729,6 +735,33 @@
   });
   albumExportBtn.addEventListener('click', exportAll);
 
+  // ============== 显影 ==============
+  function isDeveloped(rec) {
+    if (!rec.developMs) return true;
+    return (Date.now() - rec.ts) >= rec.developMs;
+  }
+  function remainingDevelop(rec) {
+    if (!rec.developMs) return 0;
+    return Math.max(0, rec.developMs - (Date.now() - rec.ts));
+  }
+  // 在元素上播放显影动画：从模糊→清晰，剩余时间为 ms
+  function playDevelop(el, ms) {
+    if (ms <= 0) {
+      el.style.filter = '';
+      el.style.transition = '';
+      return;
+    }
+    el.style.filter = 'blur(8px) brightness(0.45) saturate(0.3)';
+    el.style.transition = 'none';
+    void el.offsetWidth;
+    el.style.transition = `filter ${ms}ms ease-out`;
+    el.style.filter = 'none';
+    setTimeout(() => {
+      el.style.transition = '';
+      el.style.filter = '';
+    }, ms + 80);
+  }
+
   // ============== 相册 / 详情视图 ==============
   async function refreshThumb() {
     const latest = await Gallery.latest();
@@ -738,8 +771,10 @@
       thumbObjUrl = URL.createObjectURL(latest.blob);
       thumbBtn.style.backgroundImage = `url(${thumbObjUrl})`;
       thumbBtn.querySelector('.thumb-empty')?.remove();
+      playDevelop(thumbBtn, remainingDevelop(latest));
     } else {
       thumbBtn.style.backgroundImage = '';
+      thumbBtn.style.filter = '';
       if (!thumbBtn.querySelector('.thumb-empty')) {
         const span = document.createElement('span');
         span.className = 'thumb-empty';
@@ -787,6 +822,12 @@
       cell.dataset.preset = it.presetId || '';
       cell.style.backgroundImage = `url(${url})`;
       cell.addEventListener('click', () => openDetail(it));
+      const remaining = remainingDevelop(it);
+      if (remaining > 0) {
+        cell.classList.add('developing');
+        // 给 DOM 一帧时间显示初始模糊态
+        requestAnimationFrame(() => playDevelop(cell, remaining));
+      }
       frag.appendChild(cell);
     }
     albumGrid.appendChild(frag);
@@ -800,8 +841,19 @@
     downloadBtn.href = detailObjUrl;
     downloadBtn.download = `${(rec.presetId || 'dazz').toLowerCase()}-${rec.id}.jpg`;
     const d = new Date(rec.ts);
-    modalMeta.textContent = `${rec.presetId || ''} · ${d.toLocaleString()}`;
+    const remaining = remainingDevelop(rec);
+    const status = remaining > 0 ? ` · 显影中 ${(remaining / 1000).toFixed(1)}s` : '';
+    modalMeta.textContent = `${rec.presetId || ''} · ${d.toLocaleString()}${status}`;
     modal.hidden = false;
+    if (remaining > 0) {
+      requestAnimationFrame(() => playDevelop(modalImg, remaining));
+      // 显影完成后清掉状态文字
+      setTimeout(() => {
+        if (currentDetail === rec) {
+          modalMeta.textContent = `${rec.presetId || ''} · ${d.toLocaleString()}`;
+        }
+      }, remaining + 100);
+    }
   }
   function closeDetail() {
     modal.hidden = true;
