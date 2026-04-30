@@ -35,3 +35,7 @@
   transition: transform 0.1s ease;
 }
 .icon-btn:active { transform: scale(0.94); }
+.icon-btn.is-active {
+  color: #ffb36a;
+  border-color: rgba(255, 179, 106, 0.55);
+}

@@ -3,7 +3,7 @@ import '../styles/index.css';
 
 import { PRESETS } from './presets/index.js';
 import { createRenderer, NOISE_SIZE } from './renderer/index.js';
-import { startCamera, resizeCanvas } from './camera.js';
+import { startCamera, stopCamera, resizeCanvas } from './camera.js';
 import { capture } from './capture.js';
 import { Gallery } from './gallery/db.js';
 import { BORDER_ORDER, BORDER_LABELS } from './borders.js';
@@ -14,6 +14,7 @@ import { createFxDrawer } from './ui/fx-drawer.js';
 import { createAlbum } from './ui/album.js';
 import { bindSwipe } from './input/gestures.js';
 import { bindKeyboard } from './input/keyboard.js';
+import { cameraSource, imageSource } from './source.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -21,6 +22,8 @@ const $ = (id) => document.getElementById(id);
 const video = $('video');
 const canvas = $('preview');
 const flipBtn = $('flipBtn');
+const importBtn = $('importBtn');
+const importInput = $('importInput');
 const dateBtn = $('dateBtn');
 const borderBtn = $('borderBtn');
 const effectsBtn = $('effectsBtn');
@@ -62,6 +65,8 @@ const strengthLabels = ['100', '70', '40', 'OFF'];
 let strengthIdx = 0;
 let showDate = true;
 let borderIdx = 0;
+let currentSource = cameraSource(video);
+let sourceChangeSeq = 0;
 
 const effects = { halation: 0, fisheye: 0, flash: 0 };
 let flashArmed = false;
@@ -79,9 +84,66 @@ if (!hasGL) {
 }
 
 function applyResize() {
-  if (!video.videoWidth) return;
-  const dim = resizeCanvas(canvas, video.videoWidth, video.videoHeight, { hasGL });
+  if (!currentSource.intrinsicW || !currentSource.intrinsicH) return;
+  const dim = resizeCanvas(canvas, currentSource.intrinsicW, currentSource.intrinsicH, { hasGL });
   if (dim) renderer.setSize(dim.w, dim.h);
+}
+
+function updateSourceUi() {
+  const imageMode = currentSource.kind === 'image';
+  importBtn.classList.toggle('is-active', imageMode);
+  flipBtn.title = imageMode ? '返回相机' : '翻转摄像头';
+  flipBtn.setAttribute('aria-label', imageMode ? '返回相机' : '翻转摄像头');
+}
+
+function disposeSource(source) {
+  if (source?.kind === 'image') source.close?.();
+}
+
+async function setSourceImage(file) {
+  if (!file) return;
+  const seq = ++sourceChangeSeq;
+  try {
+    const nextSource = await imageSource(file);
+    if (seq !== sourceChangeSeq) {
+      disposeSource(nextSource);
+      return;
+    }
+    const previousSource = currentSource;
+    stopCamera();
+    video.pause();
+    video.srcObject = null;
+    currentSource = nextSource;
+    disposeSource(previousSource);
+    applyResize();
+    updateSourceUi();
+    showToast('已导入图片');
+  } catch (err) {
+    showToast('导入失败：' + (err.message || err.name));
+  }
+}
+
+async function setSourceCamera({ toast = false } = {}) {
+  const seq = ++sourceChangeSeq;
+  try {
+    const previousSource = currentSource;
+    await startCamera(video, { front: usingFront, onError: showToast });
+    if (seq !== sourceChangeSeq) {
+      if (currentSource.kind === 'image') {
+        stopCamera();
+        video.pause();
+        video.srcObject = null;
+      }
+      return;
+    }
+    currentSource = cameraSource(video);
+    disposeSource(previousSource);
+    applyResize();
+    updateSourceUi();
+    if (toast) showToast('已切回相机');
+  } catch (err) {
+    showToast('无法切回相机：' + (err.message || err.name));
+  }
 }
 
 // ============== 预设条 ==============
@@ -128,9 +190,23 @@ shutterBtn.addEventListener('click', doShutter);
 
 // ============== 顶栏交互 ==============
 flipBtn.addEventListener('click', async () => {
+  if (currentSource.kind === 'image') {
+    await setSourceCamera({ toast: true });
+    return;
+  }
   usingFront = !usingFront;
   await startCamera(video, { front: usingFront, onError: showToast });
+  currentSource = cameraSource(video);
   applyResize();
+});
+
+importBtn.addEventListener('click', () => {
+  importInput.value = '';
+  importInput.click();
+});
+
+importInput.addEventListener('change', async () => {
+  await setSourceImage(importInput.files?.[0]);
 });
 
 borderBtn.addEventListener('click', () => {
@@ -174,11 +250,11 @@ bindKeyboard({
 // ============== 主渲染循环 ==============
 let noiseOffset = 0;
 function drawFrame() {
-  if (video.readyState >= 2 && canvas.width) {
+  if (currentSource.isReady() && canvas.width) {
     const cw = canvas.width;
     const ch = canvas.height;
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
+    const vw = currentSource.intrinsicW;
+    const vh = currentSource.intrinsicH;
     const cr = cw / ch;
     const vr = vw / vh;
     let sx;
@@ -202,10 +278,10 @@ function drawFrame() {
     const ny = (((noiseOffset / NOISE_SIZE) | 0) & (NOISE_SIZE - 1)) / NOISE_SIZE;
     if (flashFlare > 0) flashFlare = Math.max(0, flashFlare - 0.04);
 
-    renderer.draw(video, {
+    renderer.draw(currentSource.element, {
       uvOffset: [sx / vw, sy / vh],
       uvScale: [sw / vw, sh / vh],
-      mirror: usingFront,
+      mirror: currentSource.kind === 'camera' && usingFront,
       strength,
       preset: presetStrip.current,
       noiseShift: [nx, ny],
@@ -231,18 +307,17 @@ setInterval(tickDate, 60_000);
 // ============== 启动 ==============
 window.addEventListener('resize', applyResize);
 video.addEventListener('loadedmetadata', applyResize);
+updateSourceUi();
 
 Gallery.open()
   .then(albumApi.refreshThumb)
   .catch((err) => showToast('胶卷库不可用：' + err.message));
 
+requestAnimationFrame(drawFrame);
+
 if (!navigator.mediaDevices?.getUserMedia) {
   showToast('当前浏览器不支持摄像头 API');
 } else {
-  startCamera(video, { front: false, onError: showToast })
-    .then(() => {
-      applyResize();
-      requestAnimationFrame(drawFrame);
-    })
+  setSourceCamera()
     .catch(() => {});
 }

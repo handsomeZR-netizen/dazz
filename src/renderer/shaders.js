@@ -1,4 +1,5 @@
 export const VS_SOURCE = `#version 300 es
+precision mediump float;
 in vec2 aPos;
 in vec2 aUv;
 out vec2 vUv;
