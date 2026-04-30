@@ -21,9 +21,19 @@
 
   const modal = document.getElementById('modal');
   const modalImg = document.getElementById('modalImg');
+  const modalMeta = document.getElementById('modalMeta');
   const closeModalBtn = document.getElementById('closeModal');
+  const deleteBtn = document.getElementById('deleteBtn');
   const downloadBtn = document.getElementById('downloadBtn');
   const toast = document.getElementById('toast');
+  const thumbCount = document.getElementById('thumbCount');
+
+  const album = document.getElementById('album');
+  const albumGrid = document.getElementById('albumGrid');
+  const albumEmpty = document.getElementById('albumEmpty');
+  const albumCloseBtn = document.getElementById('albumClose');
+  const albumExportBtn = document.getElementById('albumExport');
+  const albumCountEl = document.getElementById('albumCount');
 
   // ============== 预设定义 ==============
   // 每个预设的 LUT 构造函数：输入 0..1 标量 x，返回 [r, g, b] (0..1)
@@ -135,9 +145,173 @@
   const strengthLabels = ['100', '70', '40', 'OFF'];
   let strengthIdx = 0;
   let showDate = true;
-  let lastShot = null;
   let presetIdx = 0;
   let preset = PRESETS[0];
+
+  // 当前详情视图打开的记录（用于删除按钮）
+  let currentDetail = null;
+  // 缩略图当前 object URL（关闭时撤销）
+  let thumbObjUrl = null;
+  let detailObjUrl = null;
+  // 容量上限
+  const MAX_PHOTOS = 200;
+
+  // ============== Gallery (IndexedDB) ==============
+  const Gallery = (() => {
+    const DB = 'dazz-cam', STORE = 'photos';
+    let dbp = null;
+    function open() {
+      if (dbp) return dbp;
+      dbp = new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB, 1);
+        req.onupgradeneeded = e => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE)) {
+            const s = db.createObjectStore(STORE, { keyPath: 'id' });
+            s.createIndex('ts', 'ts');
+          }
+        };
+        req.onsuccess = e => resolve(e.target.result);
+        req.onerror = e => reject(e.target.error);
+      });
+      return dbp;
+    }
+    async function add(blob, meta = {}) {
+      const db = await open();
+      const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const record = { id, ts: Date.now(), blob, ...meta };
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).add(record);
+        tx.oncomplete = () => resolve(record);
+        tx.onerror = e => reject(e.target.error);
+      });
+    }
+    async function list() {
+      const db = await open();
+      return new Promise((resolve) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const idx = tx.objectStore(STORE).index('ts');
+        const items = [];
+        idx.openCursor(null, 'prev').onsuccess = e => {
+          const c = e.target.result;
+          if (c) { items.push(c.value); c.continue(); }
+          else resolve(items);
+        };
+      });
+    }
+    async function remove(id) {
+      const db = await open();
+      return new Promise((resolve) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).delete(id);
+        tx.oncomplete = () => resolve();
+      });
+    }
+    async function count() {
+      const db = await open();
+      return new Promise((resolve) => {
+        const tx = db.transaction(STORE, 'readonly');
+        tx.objectStore(STORE).count().onsuccess = e => resolve(e.target.result);
+      });
+    }
+    async function trim(maxN) {
+      const items = await list();
+      if (items.length <= maxN) return 0;
+      const db = await open();
+      const dropped = items.slice(maxN);
+      return new Promise((resolve) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        const s = tx.objectStore(STORE);
+        for (const it of dropped) s.delete(it.id);
+        tx.oncomplete = () => resolve(dropped.length);
+      });
+    }
+    async function latest() {
+      const items = await list();
+      return items[0] || null;
+    }
+    return { open, add, list, remove, count, trim, latest };
+  })();
+
+  // ============== STORE-mode ZIP（无外部依赖） ==============
+  const CRC32_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[i] = c;
+    }
+    return t;
+  })();
+  function crc32(u8) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < u8.length; i++) c = CRC32_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  async function buildZip(entries) {
+    const enc = new TextEncoder();
+    const parts = [];
+    const central = [];
+    let offset = 0;
+    const now = new Date();
+    const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+    const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+    for (const e of entries) {
+      const data = new Uint8Array(await e.blob.arrayBuffer());
+      const nameBytes = enc.encode(e.name);
+      const c = crc32(data);
+      const lfh = new ArrayBuffer(30);
+      const dv = new DataView(lfh);
+      dv.setUint32(0, 0x04034b50, true);
+      dv.setUint16(4, 20, true);
+      dv.setUint16(6, 0, true);
+      dv.setUint16(8, 0, true);
+      dv.setUint16(10, dosTime, true);
+      dv.setUint16(12, dosDate, true);
+      dv.setUint32(14, c, true);
+      dv.setUint32(18, data.length, true);
+      dv.setUint32(22, data.length, true);
+      dv.setUint16(26, nameBytes.length, true);
+      dv.setUint16(28, 0, true);
+      parts.push(new Uint8Array(lfh), nameBytes, data);
+      const cdh = new ArrayBuffer(46);
+      const cv = new DataView(cdh);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, dosTime, true);
+      cv.setUint16(14, dosDate, true);
+      cv.setUint32(16, c, true);
+      cv.setUint32(20, data.length, true);
+      cv.setUint32(24, data.length, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint16(30, 0, true);
+      cv.setUint16(32, 0, true);
+      cv.setUint16(34, 0, true);
+      cv.setUint16(36, 0, true);
+      cv.setUint32(38, 0, true);
+      cv.setUint32(42, offset, true);
+      central.push(new Uint8Array(cdh), nameBytes);
+      offset += 30 + nameBytes.length + data.length;
+    }
+    const cdOffset = offset;
+    let cdSize = 0;
+    for (const c of central) cdSize += c.length;
+    const eocd = new ArrayBuffer(22);
+    const ev = new DataView(eocd);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(4, 0, true);
+    ev.setUint16(6, 0, true);
+    ev.setUint16(8, entries.length, true);
+    ev.setUint16(10, entries.length, true);
+    ev.setUint32(12, cdSize, true);
+    ev.setUint32(16, cdOffset, true);
+    ev.setUint16(20, 0, true);
+    return new Blob([...parts, ...central, new Uint8Array(eocd)], { type: 'application/zip' });
+  }
 
   // ============== 启动相机 ==============
   async function startCamera(front = false) {
@@ -316,7 +490,7 @@
     requestAnimationFrame(drawFrame);
   }
 
-  // ============== 拍照（烘焙水印） ==============
+  // ============== 拍照（烘焙水印 + 入库） ==============
   function capture() {
     if (!canvas.width) return;
 
@@ -352,12 +526,18 @@
     }
     octx.shadowBlur = 0;
 
-    const url = off.toDataURL('image/jpeg', 0.92);
-    lastShot = url;
-    thumbBtn.style.backgroundImage = `url(${url})`;
-    thumbBtn.querySelector('.thumb-empty')?.remove();
-
-    showToast('已捕获 · 点左下查看');
+    const presetId = preset.id;
+    off.toBlob(async (blob) => {
+      if (!blob) { showToast('保存失败'); return; }
+      try {
+        await Gallery.add(blob, { presetId });
+        const dropped = await Gallery.trim(MAX_PHOTOS);
+        if (dropped) showToast(`已保留最近 ${MAX_PHOTOS} 张`);
+        await refreshThumb();
+      } catch (e) {
+        showToast('保存失败：' + (e.message || e.name));
+      }
+    }, 'image/jpeg', 0.92);
   }
 
   function formatDate(d) {
@@ -418,15 +598,127 @@
     showToast('滤镜强度 ' + strengthLabels[strengthIdx]);
   });
 
-  thumbBtn.addEventListener('click', () => {
-    if (!lastShot) return;
-    modalImg.src = lastShot;
-    downloadBtn.href = lastShot;
-    downloadBtn.download = `${preset.id.toLowerCase()}-${Date.now()}.jpg`;
-    modal.hidden = false;
+  thumbBtn.addEventListener('click', openAlbum);
+  albumCloseBtn.addEventListener('click', closeAlbum);
+  closeModalBtn.addEventListener('click', closeDetail);
+  deleteBtn.addEventListener('click', async () => {
+    if (!currentDetail) return;
+    if (!confirm('删除这张照片？')) return;
+    await Gallery.remove(currentDetail.id);
+    showToast('已删除');
+    closeDetail();
+    if (!album.hidden) await renderAlbum();
+    await refreshThumb();
   });
+  albumExportBtn.addEventListener('click', exportAll);
 
-  closeModalBtn.addEventListener('click', () => { modal.hidden = true; });
+  // ============== 相册 / 详情视图 ==============
+  async function refreshThumb() {
+    const latest = await Gallery.latest();
+    const n = await Gallery.count();
+    if (thumbObjUrl) { URL.revokeObjectURL(thumbObjUrl); thumbObjUrl = null; }
+    if (latest) {
+      thumbObjUrl = URL.createObjectURL(latest.blob);
+      thumbBtn.style.backgroundImage = `url(${thumbObjUrl})`;
+      thumbBtn.querySelector('.thumb-empty')?.remove();
+    } else {
+      thumbBtn.style.backgroundImage = '';
+      if (!thumbBtn.querySelector('.thumb-empty')) {
+        const span = document.createElement('span');
+        span.className = 'thumb-empty';
+        span.textContent = '×';
+        thumbBtn.prepend(span);
+      }
+    }
+    if (n > 0) {
+      thumbCount.hidden = false;
+      thumbCount.textContent = String(n);
+    } else {
+      thumbCount.hidden = true;
+    }
+  }
+
+  async function openAlbum() {
+    await renderAlbum();
+    album.hidden = false;
+  }
+  function closeAlbum() {
+    album.hidden = true;
+    // 释放网格中的 object URL
+    albumGrid.querySelectorAll('.album-cell').forEach(cell => {
+      const u = cell.dataset.url;
+      if (u) URL.revokeObjectURL(u);
+    });
+    albumGrid.innerHTML = '';
+  }
+  async function renderAlbum() {
+    const items = await Gallery.list();
+    albumCountEl.textContent = String(items.length);
+    albumGrid.innerHTML = '';
+    if (items.length === 0) {
+      albumEmpty.hidden = false;
+      return;
+    }
+    albumEmpty.hidden = true;
+    const frag = document.createDocumentFragment();
+    for (const it of items) {
+      const cell = document.createElement('div');
+      cell.className = 'album-cell';
+      const url = URL.createObjectURL(it.blob);
+      cell.dataset.url = url;
+      cell.dataset.id = it.id;
+      cell.dataset.preset = it.presetId || '';
+      cell.style.backgroundImage = `url(${url})`;
+      cell.addEventListener('click', () => openDetail(it));
+      frag.appendChild(cell);
+    }
+    albumGrid.appendChild(frag);
+  }
+
+  function openDetail(rec) {
+    currentDetail = rec;
+    if (detailObjUrl) URL.revokeObjectURL(detailObjUrl);
+    detailObjUrl = URL.createObjectURL(rec.blob);
+    modalImg.src = detailObjUrl;
+    downloadBtn.href = detailObjUrl;
+    downloadBtn.download = `${(rec.presetId || 'dazz').toLowerCase()}-${rec.id}.jpg`;
+    const d = new Date(rec.ts);
+    modalMeta.textContent = `${rec.presetId || ''} · ${d.toLocaleString()}`;
+    modal.hidden = false;
+  }
+  function closeDetail() {
+    modal.hidden = true;
+    currentDetail = null;
+    if (detailObjUrl) {
+      // 延迟撤销以避免下载链接立即失效
+      const u = detailObjUrl;
+      detailObjUrl = null;
+      setTimeout(() => URL.revokeObjectURL(u), 1000);
+    }
+  }
+
+  async function exportAll() {
+    const items = await Gallery.list();
+    if (items.length === 0) { showToast('胶卷是空的'); return; }
+    showToast('打包中…');
+    try {
+      const entries = items.map(it => ({
+        name: `${(it.presetId || 'dazz').toLowerCase()}-${it.id}.jpg`,
+        blob: it.blob,
+      }));
+      const zipBlob = await buildZip(entries);
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dazz-roll-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (e) {
+      showToast('导出失败：' + (e.message || e.name));
+    }
+  }
 
   // 滑动手势：在取景器上左右滑动切换预设
   let touchStartX = null, touchStartY = null;
@@ -449,6 +741,12 @@
 
   // 键盘支持（开发友好）
   window.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (!modal.hidden) { closeDetail(); return; }
+      if (!album.hidden) { closeAlbum(); return; }
+    }
+    // 视图打开时不切预设
+    if (!modal.hidden || !album.hidden) return;
     if (e.key === 'ArrowLeft')  setPreset(presetIdx - 1);
     if (e.key === 'ArrowRight') setPreset(presetIdx + 1);
     if (e.key === ' ')          { e.preventDefault(); capture(); }
@@ -471,6 +769,11 @@
 
   buildPresetStrip();
   setPreset(0);
+
+  // 启动时恢复缩略图与计数
+  Gallery.open()
+    .then(refreshThumb)
+    .catch(err => showToast('胶卷库不可用：' + err.message));
 
   window.addEventListener('resize', resizeCanvas);
   video.addEventListener('loadedmetadata', resizeCanvas);

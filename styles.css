@@ -230,8 +230,26 @@ html, body {
   cursor: pointer;
   overflow: hidden;
   justify-self: start;
+  position: relative;
 }
 .thumb-empty { color: #444; }
+.thumb-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #1a0d05;
+  font-size: 11px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  border: 2px solid #0a0a0a;
+}
+.thumb-count[hidden] { display: none; }
 
 .shutter {
   width: 78px;
@@ -275,37 +293,120 @@ html, body {
   justify-self: end;
 }
 
-/* 模态框 */
+/* 胶卷相册 */
+.album {
+  position: fixed;
+  inset: 0;
+  background: #0a0a0a;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.25s ease-out;
+}
+.album[hidden] { display: none; }
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+.album-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: max(env(safe-area-inset-top), 14px) 18px 12px;
+  border-bottom: 1px solid #1a1a1a;
+}
+.album-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+}
+.album-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  overflow-y: auto;
+  align-content: start;
+}
+.album-cell {
+  aspect-ratio: 3 / 4;
+  background: #161616 center/cover no-repeat;
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.1s ease;
+}
+.album-cell:active { transform: scale(0.97); }
+.album-cell::after {
+  content: attr(data-preset);
+  position: absolute;
+  bottom: 4px;
+  left: 6px;
+  font-family: "Courier New", monospace;
+  font-size: 9px;
+  color: rgba(255, 235, 200, 0.85);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.1em;
+}
+.album-empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: 0.1em;
+}
+.album-empty[hidden] { display: none; }
+
+/* 模态框（详情） */
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.85);
-  display: grid;
-  place-items: center;
+  background: #0a0a0a;
   z-index: 100;
-  padding: 24px;
-}
-.modal[hidden] { display: none; }
-.modal-inner {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  max-width: 90vw;
-  max-height: 90vh;
 }
-.modal-inner img {
+.modal[hidden] { display: none; }
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: max(env(safe-area-inset-top), 14px) 18px 12px;
+}
+.modal-meta {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  font-family: "Courier New", monospace;
+}
+.modal-img-wrap {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  min-height: 0;
+}
+.modal-img-wrap img {
   max-width: 100%;
-  max-height: 70vh;
-  border-radius: 8px;
+  max-height: 100%;
+  border-radius: 6px;
   background: #000;
+  object-fit: contain;
 }
 .modal-actions {
   display: flex;
   gap: 10px;
-  justify-content: center;
+  padding: 12px 24px max(env(safe-area-inset-bottom), 22px);
 }
-.modal-actions button,
-.modal-actions a {
+.modal-actions a,
+.modal-actions button {
   flex: 1;
   padding: 12px 20px;
   border-radius: 999px;
@@ -317,15 +418,11 @@ html, body {
   text-align: center;
   letter-spacing: 0.05em;
 }
-.ghost {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid #333 !important;
-}
 .primary {
   background: var(--accent);
   color: #1a0d05;
 }
+.icon-btn.danger { color: #ff5b5b; }
 
 /* Toast */
 .toast {

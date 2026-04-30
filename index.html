@@ -51,8 +51,9 @@
 
     <!-- 底部控制 -->
     <footer class="controls">
-      <button class="thumb" id="thumbBtn" aria-label="最近一张">
+      <button class="thumb" id="thumbBtn" aria-label="打开胶卷">
         <span class="thumb-empty">×</span>
+        <span class="thumb-count" id="thumbCount" hidden>0</span>
       </button>
 
       <button class="shutter" id="shutterBtn" aria-label="拍照">
@@ -65,15 +66,46 @@
       </button>
     </footer>
 
-    <!-- 照片预览模态框 -->
+    <!-- 胶卷相册 -->
+    <section class="album" id="album" hidden>
+      <header class="album-header">
+        <button class="icon-btn" id="albumClose" aria-label="返回">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path fill="currentColor" d="M15.41 16.59 10.83 12l4.58-4.59L14 6l-6 6 6 6z"/>
+          </svg>
+        </button>
+        <h2 class="album-title">胶卷 · <span id="albumCount">0</span></h2>
+        <button class="icon-btn" id="albumExport" aria-label="导出全部">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+          </svg>
+        </button>
+      </header>
+      <div class="album-grid" id="albumGrid"></div>
+      <div class="album-empty" id="albumEmpty">还没有拍过照片</div>
+    </section>
+
+    <!-- 单张详情模态 -->
     <div class="modal" id="modal" hidden>
-      <div class="modal-inner">
+      <header class="modal-header">
+        <button class="icon-btn" id="closeModal" aria-label="关闭">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+          </svg>
+        </button>
+        <span class="modal-meta" id="modalMeta"></span>
+        <button class="icon-btn danger" id="deleteBtn" aria-label="删除">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path fill="currentColor" d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+          </svg>
+        </button>
+      </header>
+      <div class="modal-img-wrap">
         <img id="modalImg" alt="拍摄结果" />
-        <div class="modal-actions">
-          <button class="ghost" id="closeModal">关闭</button>
-          <a class="primary" id="downloadBtn" download="nc-cam.jpg">保存</a>
-        </div>
       </div>
+      <footer class="modal-actions">
+        <a class="primary" id="downloadBtn" download="dazz.jpg">保存到相册</a>
+      </footer>
     </div>
 
     <!-- 提示 -->
