@@ -52,6 +52,7 @@ const albumRefs = {
   modalMeta: $('modalMeta'),
   closeModalBtn: $('closeModal'),
   deleteBtn: $('deleteBtn'),
+  shareBtn: $('shareBtn'),
   downloadBtn: $('downloadBtn'),
   thumbBtn: $('thumbBtn'),
   thumbCount: $('thumbCount'),

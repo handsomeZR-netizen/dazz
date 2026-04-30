@@ -5,7 +5,7 @@ import { buildZip } from '../gallery/zip.js';
 export function createAlbum({ refs, onToast }) {
   const {
     album, albumGrid, albumEmpty, albumCloseBtn, albumExportBtn, albumCountEl,
-    modal, modalImg, modalMeta, closeModalBtn, deleteBtn, downloadBtn,
+    modal, modalImg, modalMeta, closeModalBtn, deleteBtn, shareBtn, downloadBtn,
     thumbBtn, thumbCount,
   } = refs;
 
@@ -20,6 +20,23 @@ export function createAlbum({ refs, onToast }) {
   function remainingDevelop(rec) {
     if (!rec.developMs) return 0;
     return Math.max(0, rec.developMs - (Date.now() - rec.ts));
+  }
+  function photoFilename(rec) {
+    return `${(rec.presetId || 'dazz').toLowerCase()}-${rec.id}.jpg`;
+  }
+  function createPhotoFile(rec) {
+    return new File([rec.blob], photoFilename(rec), {
+      type: 'image/jpeg',
+      lastModified: rec.ts || Date.now(),
+    });
+  }
+  function canSharePhoto(rec) {
+    if (!shareBtn || typeof File !== 'function' || typeof navigator.share !== 'function') return false;
+    try {
+      return navigator.canShare?.({ files: [createPhotoFile(rec)] }) === true;
+    } catch {
+      return false;
+    }
   }
   function playDevelop(el, ms) {
     if (ms <= 0) {
@@ -117,7 +134,8 @@ export function createAlbum({ refs, onToast }) {
     detailObjUrl = URL.createObjectURL(rec.blob);
     modalImg.src = detailObjUrl;
     downloadBtn.href = detailObjUrl;
-    downloadBtn.download = `${(rec.presetId || 'dazz').toLowerCase()}-${rec.id}.jpg`;
+    downloadBtn.download = photoFilename(rec);
+    if (shareBtn) shareBtn.hidden = !canSharePhoto(rec);
     const d = new Date(rec.ts);
     const remaining = remainingDevelop(rec);
     const status = remaining > 0 ? ` · 显影中 ${(remaining / 1000).toFixed(1)}s` : '';
@@ -136,6 +154,7 @@ export function createAlbum({ refs, onToast }) {
   function closeDetail() {
     modal.hidden = true;
     currentDetail = null;
+    if (shareBtn) shareBtn.hidden = true;
     if (detailObjUrl) {
       const u = detailObjUrl;
       detailObjUrl = null;
@@ -152,7 +171,7 @@ export function createAlbum({ refs, onToast }) {
     onToast?.('打包中…');
     try {
       const entries = items.map((it) => ({
-        name: `${(it.presetId || 'dazz').toLowerCase()}-${it.id}.jpg`,
+        name: photoFilename(it),
         blob: it.blob,
       }));
       const zipBlob = await buildZip(entries);
@@ -179,11 +198,27 @@ export function createAlbum({ refs, onToast }) {
     await refreshThumb();
   }
 
+  async function shareCurrent() {
+    if (!currentDetail) return;
+    try {
+      const file = createPhotoFile(currentDetail);
+      if (navigator.canShare?.({ files: [file] }) !== true) {
+        shareBtn.hidden = true;
+        return;
+      }
+      await navigator.share({ files: [file] });
+    } catch (e) {
+      if (e?.name === 'AbortError') return;
+      onToast?.('分享失败：' + (e?.message || e?.name || '未知错误'));
+    }
+  }
+
   // bind
   thumbBtn.addEventListener('click', openAlbum);
   albumCloseBtn.addEventListener('click', closeAlbum);
   closeModalBtn.addEventListener('click', closeDetail);
   deleteBtn.addEventListener('click', deleteCurrent);
+  shareBtn?.addEventListener('click', shareCurrent);
   albumExportBtn.addEventListener('click', exportAll);
 
   return {
