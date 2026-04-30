@@ -5,7 +5,9 @@
   // ============== DOM ==============
   const video = document.getElementById('video');
   const canvas = document.getElementById('preview');
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  // 渲染上下文延后获取：先试 WebGL2，失败回退 2D
+  let ctx = null;        // CanvasRenderingContext2D（2D 路径）
+  let GL = null;         // GL 渲染器对象（GL 路径），见下面 createGLRenderer
 
   const flipBtn = document.getElementById('flipBtn');
   const dateBtn = document.getElementById('dateBtn');
@@ -357,12 +359,14 @@
     if (!video.videoWidth) return;
     const target = 3 / 4;
     const vw = video.videoWidth, vh = video.videoHeight;
-    const cap = 540;
+    // GL 路径分辨率上限可以更高（GPU 处理更快）
+    const cap = GL ? 900 : 540;
     let w, h;
     if (vw / vh > target) { h = Math.min(vh, cap); w = Math.round(h * target); }
     else { w = Math.min(vw, Math.round(cap * target)); h = Math.round(w / target); }
     canvas.width = w;
     canvas.height = h;
+    if (GL) GL.setSize(w, h);
   }
 
   // ============== 预生成纹理（噪声 / 暗角 / 光斑） ==============
@@ -417,7 +421,206 @@
     return v;
   }
 
-  // ============== 滤镜核心 ==============
+  // ============== WebGL2 渲染器 ==============
+  const VS_SOURCE = `#version 300 es
+in vec2 aPos;
+in vec2 aUv;
+out vec2 vUv;
+out vec2 vVideoUv;
+uniform vec2 uUvOffset;
+uniform vec2 uUvScale;
+uniform float uMirror;
+void main() {
+  vUv = aUv;
+  vec2 uv = aUv;
+  if (uMirror > 0.5) uv.x = 1.0 - uv.x;
+  vVideoUv = uUvOffset + uv * uUvScale;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+
+  const FS_SOURCE = `#version 300 es
+precision mediump float;
+uniform sampler2D uVideo;
+uniform sampler2D uLut;
+uniform sampler2D uNoise;
+uniform float uStrength;
+uniform float uGrainAmp;
+uniform float uVignette;
+uniform float uLeak;
+uniform float uMono;
+uniform vec2  uNoiseShift;
+uniform vec2  uResolution;
+in vec2 vUv;
+in vec2 vVideoUv;
+out vec4 outColor;
+void main() {
+  vec3 src = texture(uVideo, vVideoUv).rgb;
+  vec3 c;
+  if (uMono > 0.5) {
+    float y = dot(src, vec3(0.299, 0.587, 0.114));
+    float v = texture(uLut, vec2(y, 0.5)).r;
+    c = vec3(v);
+  } else {
+    c = vec3(
+      texture(uLut, vec2(src.r, 0.5)).r,
+      texture(uLut, vec2(src.g, 0.5)).g,
+      texture(uLut, vec2(src.b, 0.5)).b
+    );
+  }
+  vec2 d = vUv - 0.5;
+  float r = length(d) * 1.41421356;
+  float t = max(0.0, (r - 0.55) / 0.45);
+  c *= (1.0 - uVignette * t * t);
+  if (uLeak > 0.5) {
+    vec2 lc = vec2(1.05, -0.05);
+    float ld = length(vUv - lc) / 0.85;
+    float lt = max(0.0, 1.0 - ld);
+    float lk = lt * lt * 0.55;
+    c += vec3(60.0, 22.0, 28.0) * lk / 255.0;
+  }
+  vec2 nuv = (vUv * uResolution / 256.0) + uNoiseShift;
+  float n = texture(uNoise, nuv).r;
+  c += (n - 0.5) * 2.0 * uGrainAmp / 255.0;
+  c = mix(src, c, uStrength);
+  outColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+}`;
+
+  function createGLRenderer(cvs) {
+    const gl = cvs.getContext('webgl2', {
+      alpha: false,
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: true,
+      antialias: false,
+    });
+    if (!gl) return null;
+
+    function compile(type, src) {
+      const sh = gl.createShader(type);
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        console.error('shader compile:', gl.getShaderInfoLog(sh));
+        gl.deleteShader(sh);
+        return null;
+      }
+      return sh;
+    }
+    const vs = compile(gl.VERTEX_SHADER, VS_SOURCE);
+    const fs = compile(gl.FRAGMENT_SHADER, FS_SOURCE);
+    if (!vs || !fs) return null;
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      console.error('link error:', gl.getProgramInfoLog(prog));
+      return null;
+    }
+    gl.useProgram(prog);
+
+    // 全屏 quad（注意 UV：上下翻转以对齐 video texture y 轴）
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      // pos      uv (y 翻转)
+      -1, -1,    0, 1,
+       1, -1,    1, 1,
+      -1,  1,    0, 0,
+       1,  1,    1, 0,
+    ]), gl.STATIC_DRAW);
+    const aPos = gl.getAttribLocation(prog, 'aPos');
+    const aUv  = gl.getAttribLocation(prog, 'aUv');
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(aUv);
+    gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 16, 8);
+
+    const u = {};
+    for (const name of ['uVideo','uLut','uNoise','uStrength','uGrainAmp','uVignette','uLeak','uMono','uNoiseShift','uResolution','uUvOffset','uUvScale','uMirror']) {
+      u[name] = gl.getUniformLocation(prog, name);
+    }
+
+    // Video texture
+    const videoTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, videoTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    // LUT texture (256x1, RGBA)
+    const lutTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, lutTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    // 占位（实际 LUT 在 setPreset 里上传）
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(256 * 4));
+
+    // Noise texture 256x256 R8
+    const noiseTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, noiseTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    const noiseU8 = new Uint8Array(NOISE_SIZE * NOISE_SIZE);
+    for (let i = 0; i < noiseTile.length; i++) noiseU8[i] = noiseTile[i] + 128;
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, NOISE_SIZE, NOISE_SIZE, 0, gl.RED, gl.UNSIGNED_BYTE, noiseU8);
+
+    gl.uniform1i(u.uVideo, 0);
+    gl.uniform1i(u.uLut, 1);
+    gl.uniform1i(u.uNoise, 2);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+
+    return {
+      gl,
+      setSize(w, h) {
+        gl.viewport(0, 0, w, h);
+      },
+      setPreset(p) {
+        // 把 lutR/G/B 打包成 RGBA 256x1
+        const lutData = new Uint8Array(256 * 4);
+        for (let i = 0; i < 256; i++) {
+          lutData[i * 4 + 0] = p.lutR[i];
+          lutData[i * 4 + 1] = p.lutG[i];
+          lutData[i * 4 + 2] = p.lutB[i];
+          lutData[i * 4 + 3] = 255;
+        }
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, lutTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, lutData);
+      },
+      draw(videoEl, opts) {
+        const { uvOffset, uvScale, mirror, strength, preset, noiseShift, w, h } = opts;
+        // 上传视频帧
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, videoTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, videoEl);
+
+        gl.uniform1f(u.uStrength, strength);
+        gl.uniform1f(u.uGrainAmp, preset.grainAmp);
+        gl.uniform1f(u.uVignette, preset.vignette);
+        gl.uniform1f(u.uLeak, preset.leak ? 1.0 : 0.0);
+        gl.uniform1f(u.uMono, preset.mono ? 1.0 : 0.0);
+        gl.uniform2f(u.uNoiseShift, noiseShift[0], noiseShift[1]);
+        gl.uniform2f(u.uResolution, w, h);
+        gl.uniform2f(u.uUvOffset, uvOffset[0], uvOffset[1]);
+        gl.uniform2f(u.uUvScale, uvScale[0], uvScale[1]);
+        gl.uniform1f(u.uMirror, mirror ? 1.0 : 0.0);
+
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      },
+    };
+  }
+
+  // ============== 滤镜核心（CPU 回退） ==============
   function applyFilter(imageData, s) {
     const data = imageData.data;
     const w = imageData.width, h = imageData.height;
@@ -490,15 +693,30 @@
       if (vr > cr) { sh = vh; sw = vh * cr; sx = (vw - sw) / 2; sy = 0; }
       else         { sw = vw; sh = vw / cr; sx = 0; sy = (vh - sh) / 2; }
 
-      ctx.save();
-      if (usingFront) { ctx.translate(cw, 0); ctx.scale(-1, 1); }
-      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
-      ctx.restore();
+      if (GL) {
+        noiseOffset = (noiseOffset + 17) & (NOISE_SIZE * NOISE_SIZE - 1);
+        const nx = (noiseOffset & (NOISE_SIZE - 1)) / NOISE_SIZE;
+        const ny = (((noiseOffset / NOISE_SIZE) | 0) & (NOISE_SIZE - 1)) / NOISE_SIZE;
+        GL.draw(video, {
+          uvOffset: [sx / vw, sy / vh],
+          uvScale:  [sw / vw, sh / vh],
+          mirror: usingFront,
+          strength,
+          preset,
+          noiseShift: [nx, ny],
+          w: cw, h: ch,
+        });
+      } else {
+        ctx.save();
+        if (usingFront) { ctx.translate(cw, 0); ctx.scale(-1, 1); }
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
+        ctx.restore();
 
-      if (strength > 0) {
-        const img = ctx.getImageData(0, 0, cw, ch);
-        applyFilter(img, strength);
-        ctx.putImageData(img, 0, 0);
+        if (strength > 0) {
+          const img = ctx.getImageData(0, 0, cw, ch);
+          applyFilter(img, strength);
+          ctx.putImageData(img, 0, 0);
+        }
       }
     }
     requestAnimationFrame(drawFrame);
@@ -671,6 +889,7 @@
     datestampEl.style.textShadow = `0 0 4px ${preset.stampGlow}, 0 0 12px ${preset.stampGlow}`;
     bodyEl.dataset.preset = preset.id;
     bodyBrand.textContent = preset.brandLabel;
+    if (GL) GL.setPreset(preset);
 
     // 更新选中态
     presetStrip.querySelectorAll('.preset-chip').forEach((el, i) => {
@@ -934,6 +1153,13 @@
     toast.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { toast.hidden = true; }, 1400);
+  }
+
+  // 初始化渲染器：先尝试 WebGL2，失败回退 Canvas2D
+  GL = createGLRenderer(canvas);
+  if (!GL) {
+    ctx = canvas.getContext('2d', { willReadFrequently: true });
+    console.warn('WebGL2 不可用，使用 CPU 渲染');
   }
 
   buildPresetStrip();
