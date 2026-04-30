@@ -12,6 +12,8 @@
   const flipBtn = document.getElementById('flipBtn');
   const dateBtn = document.getElementById('dateBtn');
   const borderBtn = document.getElementById('borderBtn');
+  const effectsBtn = document.getElementById('effectsBtn');
+  const fxDrawer = document.getElementById('fxDrawer');
   const shutterBtn = document.getElementById('shutterBtn');
   const filterBtn = document.getElementById('filterBtn');
   const strengthLabel = document.getElementById('strengthLabel');
@@ -163,6 +165,13 @@
   let borderIdx = 0;
   const BORDER_ORDER = ['none', '35mm', 'polaroid', 'square'];
   const BORDER_LABELS = { none: '无边框', '35mm': '35mm 胶片', polaroid: '拍立得', square: '方画幅' };
+
+  // 进阶特效（M6）— 0..1 强度
+  const effects = { halation: 0, fisheye: 0, flash: 0 };
+  // 闪光是"瞬时"的：拍照前提到 1.0，拍后衰减到 0
+  const FX_DEFAULTS = { halation: 0.55, fisheye: 0.5, flash: 0.85 };
+  let flashArmed = false;     // 下一次快门是否触发闪光
+  let flashFlare  = 0;        // 当前的闪光衰减量（0..1）
 
   // 当前详情视图打开的记录（用于删除按钮）
   let currentDetail = null;
@@ -450,11 +459,33 @@ uniform float uLeak;
 uniform float uMono;
 uniform vec2  uNoiseShift;
 uniform vec2  uResolution;
+uniform vec2  uUvOffset;
+uniform vec2  uUvScale;
+uniform float uMirror;
+// 进阶特效
+uniform float uHalation;
+uniform float uFisheye;
+uniform float uFlash;
 in vec2 vUv;
 in vec2 vVideoUv;
 out vec4 outColor;
+
+vec2 sampleUv(vec2 sUv) {
+  if (uMirror > 0.5) sUv.x = 1.0 - sUv.x;
+  return uUvOffset + sUv * uUvScale;
+}
+
 void main() {
-  vec3 src = texture(uVideo, vVideoUv).rgb;
+  // —— 鱼眼：在屏幕空间扭曲后再映射到视频空间
+  vec2 sUv = vUv;
+  if (uFisheye > 0.001) {
+    vec2 d = sUv - 0.5;
+    float r2 = dot(d, d);
+    sUv = sUv + d * r2 * uFisheye * 0.9;
+  }
+  vec2 vidUv = (uFisheye > 0.001) ? sampleUv(sUv) : vVideoUv;
+
+  vec3 src = texture(uVideo, vidUv).rgb;
   vec3 c;
   if (uMono > 0.5) {
     float y = dot(src, vec3(0.299, 0.587, 0.114));
@@ -467,10 +498,14 @@ void main() {
       texture(uLut, vec2(src.b, 0.5)).b
     );
   }
-  vec2 d = vUv - 0.5;
-  float r = length(d) * 1.41421356;
-  float t = max(0.0, (r - 0.55) / 0.45);
-  c *= (1.0 - uVignette * t * t);
+
+  // —— 暗角
+  vec2 vd = vUv - 0.5;
+  float vr = length(vd) * 1.41421356;
+  float vt = max(0.0, (vr - 0.55) / 0.45);
+  c *= (1.0 - uVignette * vt * vt);
+
+  // —— 光斑
   if (uLeak > 0.5) {
     vec2 lc = vec2(1.05, -0.05);
     float ld = length(vUv - lc) / 0.85;
@@ -478,9 +513,34 @@ void main() {
     float lk = lt * lt * 0.55;
     c += vec3(60.0, 22.0, 28.0) * lk / 255.0;
   }
+
+  // —— Halation：四向取样 → 提亮区染暖
+  if (uHalation > 0.001) {
+    float h = 0.014;
+    vec3 s1 = texture(uVideo, sampleUv(sUv + vec2( h, 0))).rgb;
+    vec3 s2 = texture(uVideo, sampleUv(sUv + vec2(-h, 0))).rgb;
+    vec3 s3 = texture(uVideo, sampleUv(sUv + vec2(0,  h))).rgb;
+    vec3 s4 = texture(uVideo, sampleUv(sUv + vec2(0, -h))).rgb;
+    vec3 avg = (s1 + s2 + s3 + s4) * 0.25;
+    float lum = dot(avg, vec3(0.299, 0.587, 0.114));
+    float bloom = smoothstep(0.65, 1.0, lum);
+    c += vec3(0.85, 0.32, 0.10) * bloom * uHalation;
+  }
+
+  // —— 闪光：径向亮斑
+  if (uFlash > 0.001) {
+    vec2 fd = vUv - 0.5;
+    float fr2 = dot(fd, fd);
+    float fmask = exp(-fr2 * 4.5);
+    c += vec3(0.95, 0.85, 0.7) * fmask * uFlash;
+  }
+
+  // —— 颗粒
   vec2 nuv = (vUv * uResolution / 256.0) + uNoiseShift;
   float n = texture(uNoise, nuv).r;
   c += (n - 0.5) * 2.0 * uGrainAmp / 255.0;
+
+  // —— 强度混合
   c = mix(src, c, uStrength);
   outColor = vec4(clamp(c, 0.0, 1.0), 1.0);
 }`;
@@ -538,7 +598,7 @@ void main() {
     gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 16, 8);
 
     const u = {};
-    for (const name of ['uVideo','uLut','uNoise','uStrength','uGrainAmp','uVignette','uLeak','uMono','uNoiseShift','uResolution','uUvOffset','uUvScale','uMirror']) {
+    for (const name of ['uVideo','uLut','uNoise','uStrength','uGrainAmp','uVignette','uLeak','uMono','uNoiseShift','uResolution','uUvOffset','uUvScale','uMirror','uHalation','uFisheye','uFlash']) {
       u[name] = gl.getUniformLocation(prog, name);
     }
 
@@ -598,8 +658,7 @@ void main() {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, lutData);
       },
       draw(videoEl, opts) {
-        const { uvOffset, uvScale, mirror, strength, preset, noiseShift, w, h } = opts;
-        // 上传视频帧
+        const { uvOffset, uvScale, mirror, strength, preset, noiseShift, w, h, effects } = opts;
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, videoTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, videoEl);
@@ -614,6 +673,9 @@ void main() {
         gl.uniform2f(u.uUvOffset, uvOffset[0], uvOffset[1]);
         gl.uniform2f(u.uUvScale, uvScale[0], uvScale[1]);
         gl.uniform1f(u.uMirror, mirror ? 1.0 : 0.0);
+        gl.uniform1f(u.uHalation, effects?.halation || 0);
+        gl.uniform1f(u.uFisheye,  effects?.fisheye  || 0);
+        gl.uniform1f(u.uFlash,    effects?.flash    || 0);
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       },
@@ -697,6 +759,8 @@ void main() {
         noiseOffset = (noiseOffset + 17) & (NOISE_SIZE * NOISE_SIZE - 1);
         const nx = (noiseOffset & (NOISE_SIZE - 1)) / NOISE_SIZE;
         const ny = (((noiseOffset / NOISE_SIZE) | 0) & (NOISE_SIZE - 1)) / NOISE_SIZE;
+        // 闪光衰减
+        if (flashFlare > 0) flashFlare = Math.max(0, flashFlare - 0.04);
         GL.draw(video, {
           uvOffset: [sx / vw, sy / vh],
           uvScale:  [sw / vw, sh / vh],
@@ -705,6 +769,11 @@ void main() {
           preset,
           noiseShift: [nx, ny],
           w: cw, h: ch,
+          effects: {
+            halation: effects.halation,
+            fisheye:  effects.fisheye,
+            flash:    Math.max(effects.flash, flashFlare),
+          },
         });
       } else {
         ctx.save();
@@ -848,7 +917,22 @@ void main() {
   // ============== 拍照（边框合成 + 水印 + 入库） ==============
   function capture() {
     if (!canvas.width) return;
+    if (flashArmed && GL) {
+      // 装填闪光 → 等一帧让着色器渲染出爆光 → 抓帧
+      flashFlare = FX_DEFAULTS.flash;
+      flashArmed = false;
+      const ftog = fxDrawer.querySelector('[data-fx="flash"]');
+      if (ftog) {
+        ftog.classList.remove('armed');
+        ftog.querySelector('.fx-status').textContent = '关';
+      }
+      requestAnimationFrame(() => requestAnimationFrame(doCapture));
+    } else {
+      doCapture();
+    }
+  }
 
+  function doCapture() {
     flashEl.classList.remove('fire');
     void flashEl.offsetWidth;
     flashEl.classList.add('fire');
@@ -925,6 +1009,35 @@ void main() {
     const id = BORDER_ORDER[borderIdx];
     document.querySelector('.frame').dataset.border = id;
     showToast('边框：' + BORDER_LABELS[id]);
+  });
+
+  // 特效抽屉 ===========================
+  effectsBtn.addEventListener('click', () => {
+    fxDrawer.hidden = !fxDrawer.hidden;
+  });
+  // 点抽屉外区域关闭
+  document.addEventListener('click', e => {
+    if (fxDrawer.hidden) return;
+    if (fxDrawer.contains(e.target) || effectsBtn.contains(e.target)) return;
+    fxDrawer.hidden = true;
+  });
+  // 切换每个效果
+  fxDrawer.querySelectorAll('.fx-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.fx;
+      const arm = btn.dataset.arm === 'true';
+      if (arm) {
+        // flash 是"待发射"模式
+        flashArmed = !flashArmed;
+        btn.classList.toggle('armed', flashArmed);
+        btn.querySelector('.fx-status').textContent = flashArmed ? '待发射' : '关';
+      } else {
+        const on = effects[key] === 0;
+        effects[key] = on ? FX_DEFAULTS[key] : 0;
+        btn.classList.toggle('on', on);
+        btn.querySelector('.fx-status').textContent = on ? '开' : '关';
+      }
+    });
   });
 
   dateBtn.addEventListener('click', () => {
@@ -1130,11 +1243,11 @@ void main() {
   // 键盘支持（开发友好）
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      if (!modal.hidden) { closeDetail(); return; }
-      if (!album.hidden) { closeAlbum(); return; }
+      if (!modal.hidden)    { closeDetail(); return; }
+      if (!album.hidden)    { closeAlbum();  return; }
+      if (!fxDrawer.hidden) { fxDrawer.hidden = true; return; }
     }
-    // 视图打开时不切预设
-    if (!modal.hidden || !album.hidden) return;
+    if (!modal.hidden || !album.hidden || !fxDrawer.hidden) return;
     if (e.key === 'ArrowLeft')  setPreset(presetIdx - 1);
     if (e.key === 'ArrowRight') setPreset(presetIdx + 1);
     if (e.key === ' ')          { e.preventDefault(); capture(); }
@@ -1160,6 +1273,8 @@ void main() {
   if (!GL) {
     ctx = canvas.getContext('2d', { willReadFrequently: true });
     console.warn('WebGL2 不可用，使用 CPU 渲染');
+    // CPU 模式不支持 halation/fisheye/flash，隐藏特效入口
+    effectsBtn.style.display = 'none';
   }
 
   buildPresetStrip();

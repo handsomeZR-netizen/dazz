@@ -567,6 +567,76 @@ html, body {
 }
 .icon-btn.danger { color: #ff5b5b; }
 
+/* 特效抽屉 */
+.fx-drawer {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 95;
+  background: #0f0f0f;
+  border-top: 1px solid #2a2a2a;
+  border-radius: 16px 16px 0 0;
+  padding: 0 18px max(env(safe-area-inset-bottom), 18px);
+  box-shadow: 0 -10px 40px -10px rgba(0, 0, 0, 0.7);
+  animation: fxSlideUp 0.22s ease-out;
+}
+.fx-drawer[hidden] { display: none; }
+
+@keyframes fxSlideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+.fx-drawer-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fx-drawer-handle {
+  width: 40px;
+  height: 4px;
+  background: #333;
+  border-radius: 999px;
+  margin: 8px auto 6px;
+}
+.fx-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.fx-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border: 1px solid #2a2a2a;
+  background: #161616;
+  color: var(--ink);
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.1s ease, border-color 0.1s ease;
+}
+.fx-toggle:active { background: #1f1f1f; }
+.fx-toggle.on {
+  border-color: var(--accent);
+  background: #1f1610;
+}
+.fx-toggle.armed {
+  border-color: #ff5b5b;
+  background: #1f1010;
+}
+.fx-status {
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+.fx-toggle.on .fx-status { color: var(--accent); }
+.fx-toggle.armed .fx-status { color: #ff5b5b; }
+
 /* Toast */
 .toast {
   position: fixed;
