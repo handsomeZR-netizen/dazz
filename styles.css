@@ -52,6 +52,11 @@ html, body {
   background: rgba(0,0,0,0.4);
 }
 
+.topbar-right {
+  display: flex;
+  gap: 8px;
+}
+
 .icon-btn {
   width: 40px;
   height: 40px;
@@ -142,6 +147,50 @@ html, body {
 .corner.tr { top: 10px; right: 10px; border-left:  none; border-bottom: none; }
 .corner.bl { bottom: 10px; left: 10px;  border-right: none; border-top: none; }
 .corner.br { bottom: 10px; right: 10px; border-left:  none; border-top: none; }
+
+/* 边框实时预览（仅取景器提示，最终画面由 capture 烘焙） */
+.frame[data-border="35mm"]::before,
+.frame[data-border="35mm"]::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 8.5%;
+  background: #000;
+  z-index: 4;
+  pointer-events: none;
+}
+.frame[data-border="35mm"]::before { top: 0; }
+.frame[data-border="35mm"]::after  { bottom: 0; }
+
+.frame[data-border="square"]::before,
+.frame[data-border="square"]::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 12.5%;
+  background: #000;
+  z-index: 4;
+  pointer-events: none;
+}
+.frame[data-border="square"]::before { top: 0; }
+.frame[data-border="square"]::after  { bottom: 0; }
+
+.frame[data-border="polaroid"] {
+  box-shadow:
+    inset 0 0 0 14px #f5efe1,
+    0 0 0 1px #2a2a2a,
+    0 0 0 8px var(--frame),
+    0 30px 60px -20px rgba(0,0,0,0.8);
+}
+.frame[data-border="polaroid"]::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 16%;
+  background: #f5efe1;
+  z-index: 4;
+  pointer-events: none;
+}
 
 .flash {
   position: absolute;

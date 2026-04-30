@@ -9,6 +9,7 @@
 
   const flipBtn = document.getElementById('flipBtn');
   const dateBtn = document.getElementById('dateBtn');
+  const borderBtn = document.getElementById('borderBtn');
   const shutterBtn = document.getElementById('shutterBtn');
   const filterBtn = document.getElementById('filterBtn');
   const strengthLabel = document.getElementById('strengthLabel');
@@ -147,6 +148,9 @@
   let showDate = true;
   let presetIdx = 0;
   let preset = PRESETS[0];
+  let borderIdx = 0;
+  const BORDER_ORDER = ['none', '35mm', 'polaroid', 'square'];
+  const BORDER_LABELS = { none: '无边框', '35mm': '35mm 胶片', polaroid: '拍立得', square: '方画幅' };
 
   // 当前详情视图打开的记录（用于删除按钮）
   let currentDetail = null;
@@ -490,7 +494,130 @@
     requestAnimationFrame(drawFrame);
   }
 
-  // ============== 拍照（烘焙水印 + 入库） ==============
+  // ============== 边框合成 ==============
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function bakeStamps(ctx, x, y, w, h, preset, showDate) {
+    const fontPx = Math.round(h * 0.034);
+    const padding = Math.round(h * 0.022);
+    ctx.save();
+    ctx.font = `700 ${Math.round(fontPx * 0.7)}px "Courier New", monospace`;
+    ctx.fillStyle = 'rgba(255, 235, 200, 0.85)';
+    ctx.shadowColor = preset.stampGlow;
+    ctx.shadowBlur = 6;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(preset.id, x + padding, y + padding);
+    if (showDate) {
+      ctx.font = `700 ${fontPx}px "Courier New", monospace`;
+      ctx.fillStyle = preset.stampColor;
+      ctx.shadowColor = preset.stampGlow;
+      ctx.shadowBlur = 8;
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(formatDate(new Date()), x + w - padding, y + h - padding);
+    }
+    ctx.restore();
+  }
+
+  // 每个边框：返回 { canvas, imgRect } — imgRect 是图像在最终画布上的矩形
+  const BORDERS = {
+    none(src) {
+      const c = document.createElement('canvas');
+      c.width = src.width; c.height = src.height;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(src, 0, 0);
+      return { canvas: c, ctx, imgRect: { x: 0, y: 0, w: src.width, h: src.height } };
+    },
+    '35mm'(src, p) {
+      const w = src.width, h = src.height;
+      const bar = Math.round(h * 0.085);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h + bar * 2;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(src, 0, bar);
+      // 齿孔
+      const holeW = bar * 0.5, holeH = bar * 0.42;
+      const gap = holeW * 1.7;
+      const count = Math.max(1, Math.floor((w - holeW * 0.5) / gap));
+      const totalSpan = (count - 1) * gap + holeW;
+      const start = (w - totalSpan) / 2;
+      ctx.fillStyle = '#1a1a1a';
+      for (let i = 0; i < count; i++) {
+        const xh = start + i * gap;
+        roundRect(ctx, xh, (bar - holeH) / 2, holeW, holeH, holeH * 0.22);
+        ctx.fill();
+        roundRect(ctx, xh, c.height - bar + (bar - holeH) / 2, holeW, holeH, holeH * 0.22);
+        ctx.fill();
+      }
+      // 底部：胶片标识 + 帧号
+      ctx.fillStyle = p.stampColor;
+      ctx.font = `700 ${Math.round(bar * 0.36)}px "Courier New", monospace`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${p.id} 200`, 14, c.height - bar / 2);
+      ctx.textAlign = 'right';
+      ctx.fillText('· 36 →', w - 14, c.height - bar / 2);
+      return { canvas: c, ctx, imgRect: { x: 0, y: bar, w, h } };
+    },
+    polaroid(src) {
+      const w = src.width, h = src.height;
+      const side = Math.round(w * 0.06);
+      const top = Math.round(h * 0.06);
+      const bottom = Math.round(h * 0.22);
+      const c = document.createElement('canvas');
+      c.width = w + side * 2; c.height = h + top + bottom;
+      const ctx = c.getContext('2d');
+      // 米白纸面
+      ctx.fillStyle = '#f5efe1';
+      ctx.fillRect(0, 0, c.width, c.height);
+      // 微阴影
+      const grd = ctx.createLinearGradient(0, 0, 0, c.height);
+      grd.addColorStop(0, 'rgba(0,0,0,0.04)');
+      grd.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, c.width, c.height);
+      // 图像
+      ctx.drawImage(src, side, top);
+      // 图像四周细黑线
+      ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(side - 0.5, top - 0.5, w + 1, h + 1);
+      return { canvas: c, ctx, imgRect: { x: side, y: top, w, h } };
+    },
+    square(src) {
+      const w = src.width, h = src.height;
+      const side = Math.min(w, h);
+      const sx = (w - side) / 2, sy = (h - side) / 2;
+      const border = Math.max(2, Math.round(side * 0.012));
+      const c = document.createElement('canvas');
+      c.width = side + border * 2; c.height = side + border * 2;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(src, sx, sy, side, side, border, border, side, side);
+      return { canvas: c, ctx, imgRect: { x: border, y: border, w: side, h: side } };
+    },
+  };
+
+  function composeOutput(src, borderId, p, showDate) {
+    const fn = BORDERS[borderId] || BORDERS.none;
+    const { canvas: out, ctx, imgRect } = fn(src, p);
+    bakeStamps(ctx, imgRect.x, imgRect.y, imgRect.w, imgRect.h, p, showDate);
+    return out;
+  }
+
+  // ============== 拍照（边框合成 + 水印 + 入库） ==============
   function capture() {
     if (!canvas.width) return;
 
@@ -498,39 +625,14 @@
     void flashEl.offsetWidth;
     flashEl.classList.add('fire');
 
-    const off = document.createElement('canvas');
-    off.width = canvas.width;
-    off.height = canvas.height;
-    const octx = off.getContext('2d');
-    octx.drawImage(canvas, 0, 0);
-
-    const fontPx = Math.round(off.height * 0.034);
-    const padding = Math.round(off.height * 0.022);
-
-    octx.font = `700 ${Math.round(fontPx * 0.7)}px "Courier New", monospace`;
-    octx.fillStyle = 'rgba(255, 235, 200, 0.85)';
-    octx.shadowColor = preset.stampGlow;
-    octx.shadowBlur = 6;
-    octx.textAlign = 'left';
-    octx.textBaseline = 'top';
-    octx.fillText(preset.id, padding, padding);
-
-    if (showDate) {
-      octx.font = `700 ${fontPx}px "Courier New", monospace`;
-      octx.fillStyle = preset.stampColor;
-      octx.shadowColor = preset.stampGlow;
-      octx.shadowBlur = 8;
-      octx.textAlign = 'right';
-      octx.textBaseline = 'bottom';
-      octx.fillText(formatDate(new Date()), off.width - padding, off.height - padding);
-    }
-    octx.shadowBlur = 0;
+    const borderId = BORDER_ORDER[borderIdx];
+    const out = composeOutput(canvas, borderId, preset, showDate);
 
     const presetId = preset.id;
-    off.toBlob(async (blob) => {
+    out.toBlob(async (blob) => {
       if (!blob) { showToast('保存失败'); return; }
       try {
-        await Gallery.add(blob, { presetId });
+        await Gallery.add(blob, { presetId, borderId });
         const dropped = await Gallery.trim(MAX_PHOTOS);
         if (dropped) showToast(`已保留最近 ${MAX_PHOTOS} 张`);
         await refreshThumb();
@@ -583,6 +685,13 @@
   flipBtn.addEventListener('click', async () => {
     usingFront = !usingFront;
     await startCamera(usingFront);
+  });
+
+  borderBtn.addEventListener('click', () => {
+    borderIdx = (borderIdx + 1) % BORDER_ORDER.length;
+    const id = BORDER_ORDER[borderIdx];
+    document.querySelector('.frame').dataset.border = id;
+    showToast('边框：' + BORDER_LABELS[id]);
   });
 
   dateBtn.addEventListener('click', () => {
