@@ -1,0 +1,9 @@
+node_modules
+dist
+.vite
+*.local
+.DS_Store
+
+# vite-plugin-mkcert generated certs
+.mkcert
+*.pem

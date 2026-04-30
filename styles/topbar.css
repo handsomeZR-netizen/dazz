@@ -1,0 +1,37 @@
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: max(env(safe-area-inset-top), 14px) 18px 8px;
+  z-index: 5;
+}
+
+.filter-tag {
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  text-transform: uppercase;
+  border: 1px solid #2a2a2a;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.4);
+}
+
+.topbar-right {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid #2a2a2a;
+  background: rgba(0,0,0,0.4);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.icon-btn:active { transform: scale(0.94); }

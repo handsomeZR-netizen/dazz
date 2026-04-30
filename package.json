@@ -1,0 +1,16 @@
+{
+  "name": "dazz-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Dazz Web — film-style camera filter for OPPO Find X6",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10",
+    "vite-plugin-mkcert": "^1.17.6"
+  }
+}
