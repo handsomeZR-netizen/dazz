@@ -15,6 +15,7 @@ import { createAlbum } from './ui/album.js';
 import { bindSwipe } from './input/gestures.js';
 import { bindKeyboard } from './input/keyboard.js';
 import { cameraSource, imageSource } from './source.js';
+import { processBatch } from './batch.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -207,7 +208,28 @@ importBtn.addEventListener('click', () => {
 });
 
 importInput.addEventListener('change', async () => {
-  await setSourceImage(importInput.files?.[0]);
+  const files = Array.from(importInput.files || []);
+  if (files.length <= 1) {
+    await setSourceImage(files[0]);
+    return;
+  }
+
+  await processBatch(files, {
+    preset: presetStrip.current,
+    borderIdx,
+    showDate,
+    strength,
+    hasGL,
+    onProgress: ({ current, total }) => showToast(`批量处理 ${current}/${total}`),
+    onError: (err, file) => {
+      const name = file?.name ? `${file.name}：` : '';
+      showToast('导入失败：' + name + (err.message || err.name));
+    },
+    onDone: async ({ imported }) => {
+      showToast(`已导入 ${imported} 张`);
+      await albumApi.refreshThumb();
+    },
+  });
 });
 
 borderBtn.addEventListener('click', () => {
