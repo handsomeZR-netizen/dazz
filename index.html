@@ -10,6 +10,7 @@
 <body>
   <div id="app">
     <!-- 取景器 -->
+    <!-- grid: 顶栏 / 取景器 / 预设条 / 底部控件 -->
     <main class="viewfinder">
       <div class="frame">
         <video id="video" autoplay playsinline muted></video>
@@ -44,6 +45,9 @@
         </svg>
       </button>
     </header>
+
+    <!-- 预设选择条 -->
+    <nav class="presets" id="presets" aria-label="滤镜预设"></nav>
 
     <!-- 底部控制 -->
     <footer class="controls">
