@@ -12,22 +12,32 @@
     <!-- 取景器 -->
     <!-- grid: 顶栏 / 取景器 / 预设条 / 底部控件 -->
     <main class="viewfinder">
-      <div class="frame">
-        <video id="video" autoplay playsinline muted></video>
-        <canvas id="preview"></canvas>
-
-        <!-- 取景器装饰 -->
-        <div class="overlay">
-          <div class="brand">NC</div>
-          <div class="datestamp" id="datestamp">'26 4 30</div>
-          <div class="corner tl"></div>
-          <div class="corner tr"></div>
-          <div class="corner bl"></div>
-          <div class="corner br"></div>
+      <div class="body" id="body" data-preset="NC" data-brand="NC-FILM">
+        <div class="body-top">
+          <span class="dial dial-l"></span>
+          <span class="brand-plate" id="bodyBrand">NC-FILM</span>
+          <span class="dial dial-r"></span>
         </div>
+        <div class="frame">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="preview"></canvas>
 
-        <!-- 拍照闪屏 -->
-        <div class="flash" id="flash"></div>
+          <!-- 取景器装饰 -->
+          <div class="overlay">
+            <div class="brand">NC</div>
+            <div class="datestamp" id="datestamp">'26 4 30</div>
+            <div class="corner tl"></div>
+            <div class="corner tr"></div>
+            <div class="corner bl"></div>
+            <div class="corner br"></div>
+          </div>
+
+          <!-- 拍照闪屏 -->
+          <div class="flash" id="flash"></div>
+        </div>
+        <div class="body-bottom">
+          <span class="grip"></span>
+        </div>
       </div>
     </main>
 

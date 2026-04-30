@@ -19,6 +19,8 @@
   const filterTag = document.getElementById('filterTag');
   const presetStrip = document.getElementById('presets');
   const brandEl = document.querySelector('.brand');
+  const bodyEl = document.getElementById('body');
+  const bodyBrand = document.getElementById('bodyBrand');
 
   const modal = document.getElementById('modal');
   const modalImg = document.getElementById('modalImg');
@@ -45,6 +47,7 @@
       desc: 'NC · Nostalgic',
       stampColor: '#ff8a3d',
       stampGlow:  'rgba(255, 138, 61, 0.7)',
+      brandLabel: 'NC-FILM',
       grainAmp: 7,
       vignette: 0.28,
       mono: false,
@@ -64,6 +67,7 @@
       desc: 'FX · Cinematic',
       stampColor: '#ffc857',
       stampGlow:  'rgba(255, 200, 87, 0.6)',
+      brandLabel: 'FX-CINE',
       grainAmp: 4,
       vignette: 0.18,
       mono: false,
@@ -83,6 +87,7 @@
       desc: 'G · Mono',
       stampColor: '#f4ede0',
       stampGlow:  'rgba(244, 237, 224, 0.45)',
+      brandLabel: 'GRAIN ZERO',
       grainAmp: 14,
       vignette: 0.34,
       mono: true,
@@ -99,6 +104,7 @@
       desc: 'D · Single Use',
       stampColor: '#ff5b5b',
       stampGlow:  'rgba(255, 91, 91, 0.7)',
+      brandLabel: 'D · SINGLE',
       grainAmp: 9,
       vignette: 0.22,
       mono: false,
@@ -657,6 +663,8 @@
     brandEl.textContent = preset.id;
     datestampEl.style.color = preset.stampColor;
     datestampEl.style.textShadow = `0 0 4px ${preset.stampGlow}, 0 0 12px ${preset.stampGlow}`;
+    bodyEl.dataset.preset = preset.id;
+    bodyBrand.textContent = preset.brandLabel;
 
     // 更新选中态
     presetStrip.querySelectorAll('.preset-chip').forEach((el, i) => {
