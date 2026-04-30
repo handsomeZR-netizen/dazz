@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <title>NC Cam</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 取景器 -->
+    <main class="viewfinder">
+      <div class="frame">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="preview"></canvas>
+
+        <!-- 取景器装饰 -->
+        <div class="overlay">
+          <div class="brand">NC</div>
+          <div class="datestamp" id="datestamp">'26 4 30</div>
+          <div class="corner tl"></div>
+          <div class="corner tr"></div>
+          <div class="corner bl"></div>
+          <div class="corner br"></div>
+        </div>
+
+        <!-- 拍照闪屏 -->
+        <div class="flash" id="flash"></div>
+      </div>
+    </main>
+
+    <!-- 顶部状态栏 -->
+    <header class="topbar">
+      <button class="icon-btn" id="flipBtn" title="翻转摄像头" aria-label="翻转摄像头">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path fill="currentColor" d="M20 5h-3.2L15 3H9L7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm-8 13a5 5 0 0 1-5-5h2l-3-3-3 3h2a7 7 0 0 0 11.9 5l-1.5-1.5A4.96 4.96 0 0 1 12 18zm5-2 3-3h-2a7 7 0 0 0-11.9-5L7.6 9.5A5 5 0 0 1 17 13h-2l3 3z"/>
+        </svg>
+      </button>
+      <div class="filter-tag" id="filterTag">NC · Nostalgic</div>
+      <button class="icon-btn" id="dateBtn" title="日期戳" aria-label="日期戳">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path fill="currentColor" d="M7 11h2v2H7v-2zm14-5v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6c0-1.1.9-2 2-2h1V2h2v2h8V2h2v2h1a2 2 0 0 1 2 2zm-2 2H5v12h14V8zm-4 3h2v2h-2v-2zm-4 0h2v2h-2v-2z"/>
+        </svg>
+      </button>
+    </header>
+
+    <!-- 底部控制 -->
+    <footer class="controls">
+      <button class="thumb" id="thumbBtn" aria-label="最近一张">
+        <span class="thumb-empty">×</span>
+      </button>
+
+      <button class="shutter" id="shutterBtn" aria-label="拍照">
+        <span class="shutter-ring"></span>
+        <span class="shutter-core"></span>
+      </button>
+
+      <button class="filter-btn" id="filterBtn" aria-label="切换强度">
+        <span id="strengthLabel">100</span>
+      </button>
+    </footer>
+
+    <!-- 照片预览模态框 -->
+    <div class="modal" id="modal" hidden>
+      <div class="modal-inner">
+        <img id="modalImg" alt="拍摄结果" />
+        <div class="modal-actions">
+          <button class="ghost" id="closeModal">关闭</button>
+          <a class="primary" id="downloadBtn" download="nc-cam.jpg">保存</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 提示 -->
+    <div class="toast" id="toast" hidden></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
