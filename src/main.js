@@ -53,6 +53,7 @@ const albumRefs = {
   albumCloseBtn: $('albumClose'),
   albumExportBtn: $('albumExport'),
   albumCountEl: $('albumCount'),
+  albumTabs: $('albumTabs'),
   modal: $('modal'),
   modalImg: $('modalImg'),
   modalMeta: $('modalMeta'),
@@ -62,6 +63,8 @@ const albumRefs = {
   downloadBtn: $('downloadBtn'),
   thumbBtn: $('thumbBtn'),
   thumbCount: $('thumbCount'),
+  modalGroupPick: $('modalGroupPick'),
+  modalGroupName: $('modalGroupName'),
 };
 
 // ============== 状态 ==============
@@ -83,6 +86,9 @@ frameEl.dataset.aspect = currentAspect;
 const effects = { halation: 0, fisheye: 0, flash: 0 };
 let flashArmed = false;
 let flashFlare = 0;
+
+// 当前激活的相册分组（默认 ALL）。新拍照片入此分组。
+let activeLabel = 'ALL';
 
 // ============== 工具 ==============
 const showToast = createToast($('toast'));
@@ -180,7 +186,12 @@ createFxDrawer({
 });
 
 // ============== 相册 ==============
-const albumApi = createAlbum({ refs: albumRefs, onToast: showToast });
+const albumApi = createAlbum({
+  refs: albumRefs,
+  onToast: showToast,
+  getActiveLabel: () => activeLabel,
+  setActiveLabel: (label) => { activeLabel = label || 'ALL'; },
+});
 
 // ============== 拍照 ==============
 function doShutter() {
@@ -197,6 +208,7 @@ function doShutter() {
     hasGL,
     onToast: showToast,
     onSaved: albumApi.refreshThumb,
+    albumLabel: activeLabel,
   });
 }
 shutterBtn.addEventListener('click', doShutter);
@@ -232,6 +244,7 @@ importInput.addEventListener('change', async () => {
     strength,
     hasGL,
     target: ASPECT_TARGETS[currentAspect],
+    albumLabel: activeLabel,
     onProgress: ({ current, total }) => showToast(`批量处理 ${current}/${total}`),
     onError: (err, file) => {
       const name = file?.name ? `${file.name}：` : '';

@@ -1,17 +1,34 @@
-// 胶卷相册 + 详情视图 + 缩略图刷新 + 显影动画 + zip 导出。
-import { Gallery } from '../gallery/db.js';
+// 胶卷相册 + 详情视图 + 缩略图刷新 + 显影动画 + zip 导出 + 分组（自定义文件夹）。
+import { Gallery, DEFAULT_LABEL } from '../gallery/db.js';
 import { buildZip } from '../gallery/zip.js';
 
-export function createAlbum({ refs, onToast }) {
+const LABEL_MAX_LEN = 8;
+const LONG_PRESS_MS = 500;
+
+export function createAlbum({ refs, onToast, getActiveLabel, setActiveLabel }) {
   const {
     album, albumGrid, albumEmpty, albumCloseBtn, albumExportBtn, albumCountEl,
+    albumTabs,
     modal, modalImg, modalMeta, closeModalBtn, deleteBtn, shareBtn, downloadBtn,
     thumbBtn, thumbCount,
+    modalGroupPick, modalGroupName,
   } = refs;
 
   let currentDetail = null;
   let thumbObjUrl = null;
   let detailObjUrl = null;
+
+  // 当前激活分组（默认 ALL）。如果父级提供 getter/setter 则委托过去。
+  let internalActiveLabel = DEFAULT_LABEL;
+  function activeLabel() {
+    if (typeof getActiveLabel === 'function') return getActiveLabel() || DEFAULT_LABEL;
+    return internalActiveLabel;
+  }
+  function applyActiveLabel(next) {
+    const l = next || DEFAULT_LABEL;
+    if (typeof setActiveLabel === 'function') setActiveLabel(l);
+    else internalActiveLabel = l;
+  }
 
   function isDeveloped(rec) {
     if (!rec.developMs) return true;
@@ -99,12 +116,128 @@ export function createAlbum({ refs, onToast }) {
     albumGrid.innerHTML = '';
   }
 
+  // —— Tab 条 —— //
+  function attachTabLongPress(btn, label) {
+    let timer = null;
+    let triggered = false;
+    const cancel = () => {
+      if (timer != null) { clearTimeout(timer); timer = null; }
+    };
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      triggered = false;
+      cancel();
+      timer = setTimeout(() => {
+        triggered = true;
+        onTabLongPress(label);
+      }, LONG_PRESS_MS);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) =>
+      btn.addEventListener(ev, cancel),
+    );
+    btn.addEventListener('click', (e) => {
+      if (triggered) {
+        e.preventDefault();
+        e.stopPropagation();
+        triggered = false;
+      }
+    });
+  }
+
+  async function onTabLongPress(label) {
+    if (label === DEFAULT_LABEL) return;
+    const choice = prompt(
+      `分组 "${label}" — 输入新名字（最多 ${LABEL_MAX_LEN} 字）；留空并确定 = 删除该分组（其照片回到 ALL）。`,
+      label,
+    );
+    if (choice === null) return; // 取消
+    const trimmed = (choice || '').trim();
+    if (trimmed === '') {
+      // 删除
+      if (!confirm(`删除分组 "${label}"？该分组下所有照片将回到 ALL。`)) return;
+      const moved = await Gallery.removeLabel(label);
+      onToast?.(`已删除 · ${moved} 张回到 ALL`);
+      if (activeLabel() === label) applyActiveLabel(DEFAULT_LABEL);
+      await renderAlbum();
+      return;
+    }
+    if (!Gallery.isValidNewLabel(trimmed)) {
+      onToast?.('名字无效（1-8 字，非 ALL）');
+      return;
+    }
+    if (trimmed === label) return;
+    // 重命名 = 把所有该 label 的记录改名
+    const items = await Gallery.listByLabel(label);
+    for (const it of items) {
+      await Gallery.setLabel(it.id, trimmed);
+    }
+    if (activeLabel() === label) applyActiveLabel(trimmed);
+    onToast?.(`已重命名为 ${trimmed}`);
+    await renderAlbum();
+  }
+
+  async function onAddTab() {
+    const name = prompt(`新建分组名（1-${LABEL_MAX_LEN} 字，不能是 ALL）`, '');
+    if (name === null) return;
+    const trimmed = (name || '').trim();
+    if (!Gallery.isValidNewLabel(trimmed)) {
+      onToast?.('名字无效（1-8 字，非 ALL）');
+      return;
+    }
+    // 注意：空分组没有照片，所以 listLabels 不会包含它，但我们立即把它设为激活分组。
+    applyActiveLabel(trimmed);
+    onToast?.(`已切到 ${trimmed}`);
+    await renderAlbum();
+  }
+
+  async function buildTabs() {
+    if (!albumTabs) return;
+    const labels = await Gallery.listLabels();
+    const current = activeLabel();
+    // 如果当前激活分组不在已知 labels 里（新建空分组场景），也临时塞进去
+    if (!labels.includes(current)) labels.push(current);
+
+    albumTabs.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for (const label of labels) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'album-tab' + (label === current ? ' active' : '');
+      btn.textContent = label;
+      btn.dataset.label = label;
+      btn.addEventListener('click', async () => {
+        if (activeLabel() === label) return;
+        applyActiveLabel(label);
+        await renderAlbum();
+      });
+      attachTabLongPress(btn, label);
+      frag.appendChild(btn);
+    }
+    // 末尾 +
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'album-tab add';
+    addBtn.textContent = '+';
+    addBtn.setAttribute('aria-label', '新建分组');
+    addBtn.addEventListener('click', onAddTab);
+    frag.appendChild(addBtn);
+    albumTabs.appendChild(frag);
+  }
+
   async function renderAlbum() {
-    const items = await Gallery.list();
+    await buildTabs();
+    const current = activeLabel();
+    const items = await Gallery.listByLabel(current);
     albumCountEl.textContent = String(items.length);
+    // 释放上一轮的 url
+    albumGrid.querySelectorAll('.album-cell').forEach((cell) => {
+      const u = cell.dataset.url;
+      if (u) URL.revokeObjectURL(u);
+    });
     albumGrid.innerHTML = '';
     if (items.length === 0) {
       albumEmpty.hidden = false;
+      albumEmpty.textContent = current === DEFAULT_LABEL ? '还没有拍过照片' : `分组 "${current}" 还没有照片`;
       return;
     }
     albumEmpty.hidden = true;
@@ -128,6 +261,11 @@ export function createAlbum({ refs, onToast }) {
     albumGrid.appendChild(frag);
   }
 
+  function updateModalGroupPick(rec) {
+    if (!modalGroupName) return;
+    modalGroupName.textContent = rec.albumLabel || DEFAULT_LABEL;
+  }
+
   function openDetail(rec) {
     currentDetail = rec;
     if (detailObjUrl) URL.revokeObjectURL(detailObjUrl);
@@ -140,6 +278,7 @@ export function createAlbum({ refs, onToast }) {
     const remaining = remainingDevelop(rec);
     const status = remaining > 0 ? ` · 显影中 ${(remaining / 1000).toFixed(1)}s` : '';
     modalMeta.textContent = `${rec.presetId || ''} · ${d.toLocaleString()}${status}`;
+    updateModalGroupPick(rec);
     modal.hidden = false;
     if (remaining > 0) {
       requestAnimationFrame(() => playDevelop(modalImg, remaining));
@@ -162,8 +301,50 @@ export function createAlbum({ refs, onToast }) {
     }
   }
 
+  async function pickGroupForDetail() {
+    if (!currentDetail) return;
+    const labels = await Gallery.listLabels();
+    const current = activeLabel();
+    if (!labels.includes(current)) labels.push(current);
+    const cur = currentDetail.albumLabel || DEFAULT_LABEL;
+    const lines = labels.map((l, i) => `${i + 1}. ${l}${l === cur ? ' (当前)' : ''}`);
+    lines.push(`${labels.length + 1}. + 新建分组…`);
+    const raw = prompt(
+      '把这张移动到哪个分组？\n' + lines.join('\n') + '\n请输入序号：',
+      String(labels.indexOf(cur) + 1 || 1),
+    );
+    if (raw === null) return;
+    const n = parseInt(String(raw).trim(), 10);
+    if (!Number.isFinite(n) || n < 1 || n > labels.length + 1) {
+      onToast?.('无效输入');
+      return;
+    }
+    let target;
+    if (n === labels.length + 1) {
+      const name = prompt(`新建分组名（1-${LABEL_MAX_LEN} 字，不能是 ALL）`, '');
+      if (name === null) return;
+      const trimmed = (name || '').trim();
+      if (!Gallery.isValidNewLabel(trimmed)) {
+        onToast?.('名字无效（1-8 字，非 ALL）');
+        return;
+      }
+      target = trimmed;
+    } else {
+      target = labels[n - 1];
+    }
+    if (target === cur) return;
+    await Gallery.setLabel(currentDetail.id, target);
+    currentDetail.albumLabel = target;
+    updateModalGroupPick(currentDetail);
+    onToast?.(`已移动到 ${target}`);
+    if (!album.hidden) await renderAlbum();
+    await refreshThumb();
+  }
+
   async function exportAll() {
-    const items = await Gallery.list();
+    // 仅导出当前分组（更直观）
+    const current = activeLabel();
+    const items = await Gallery.listByLabel(current);
     if (items.length === 0) {
       onToast?.('胶卷是空的');
       return;
@@ -178,7 +359,10 @@ export function createAlbum({ refs, onToast }) {
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `dazz-roll-${new Date().toISOString().slice(0, 10)}.zip`;
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.download = current === DEFAULT_LABEL
+        ? `dazz-roll-${stamp}.zip`
+        : `dazz-${current.toLowerCase()}-${stamp}.zip`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -220,6 +404,7 @@ export function createAlbum({ refs, onToast }) {
   deleteBtn.addEventListener('click', deleteCurrent);
   shareBtn?.addEventListener('click', shareCurrent);
   albumExportBtn.addEventListener('click', exportAll);
+  modalGroupPick?.addEventListener('click', pickGroupForDetail);
 
   return {
     refreshThumb,
@@ -228,5 +413,10 @@ export function createAlbum({ refs, onToast }) {
     closeDetail,
     isAlbumOpen() { return !album.hidden; },
     isDetailOpen() { return !modal.hidden; },
+    refresh: renderAlbum,
+    getActiveLabel: activeLabel,
+    setActiveLabel(label) {
+      applyActiveLabel(label || DEFAULT_LABEL);
+    },
   };
 }

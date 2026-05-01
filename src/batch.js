@@ -53,6 +53,7 @@ async function processOne(file, ctx, opts) {
       presetId: preset.id,
       borderId,
       developMs: preset.developMs || 0,
+      albumLabel: opts.albumLabel,
     });
   } finally {
     source.close?.();
