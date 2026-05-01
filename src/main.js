@@ -3,7 +3,7 @@ import '../styles/index.css';
 
 import { PRESETS } from './presets/index.js';
 import { createRenderer, NOISE_SIZE } from './renderer/index.js';
-import { startCamera, stopCamera, resizeCanvas } from './camera.js';
+import { startCamera, stopCamera, resizeCanvas, getZoomCapability, applyHardwareZoom } from './camera.js';
 import { capture } from './capture.js';
 import { Gallery } from './gallery/db.js';
 import { BORDER_ORDER, BORDER_LABELS } from './borders.js';
@@ -14,6 +14,7 @@ import { createFxDrawer } from './ui/fx-drawer.js';
 import { createAlbum } from './ui/album.js';
 import { bindSwipe } from './input/gestures.js';
 import { bindKeyboard } from './input/keyboard.js';
+import { bindPinch } from './input/pinch.js';
 import { cameraSource, imageSource } from './source.js';
 import { processBatch } from './batch.js';
 import { centerCrop } from './utils/frame.js';
@@ -45,6 +46,8 @@ const brandEl = document.querySelector('.brand');
 const bodyEl = $('body');
 const bodyBrand = $('bodyBrand');
 const frameEl = document.querySelector('.frame');
+const appEl = document.getElementById('app');
+const zoomBadge = $('zoomBadge');
 
 const albumRefs = {
   album: $('album'),
@@ -91,6 +94,80 @@ let flashFlare = 0;
 // 当前激活的相册分组（默认 ALL）。新拍照片入此分组。
 let activeLabel = 'ALL';
 
+// ============== 变焦状态 ==============
+// 硬件 zoom capability：相机 source 启动后探测；非相机或不支持时为 null。
+let cameraZoomCap = null;
+// 硬件当前 zoom 值（仅当 cameraZoomCap 存在时有效）。
+let hardwareZoom = 1;
+// 数字 zoom（>=1，1 = 不缩放）。导入图 / 不支持硬件 zoom 时使用。
+let digitalZoom = 1;
+// 数字 zoom 上限（避免裁切窗口塌成 0）。
+const DIGITAL_ZOOM_MIN = 1;
+const DIGITAL_ZOOM_MAX = 8;
+
+let pinching = false; // 双指 pinch 期间，suppress swipe
+
+function clamp(v, lo, hi) {
+  return Math.min(hi, Math.max(lo, v));
+}
+
+function isHardwareZoomActive() {
+  return currentSource.kind === 'camera' && !!cameraZoomCap;
+}
+
+function currentZoomDisplay() {
+  if (isHardwareZoomActive() && cameraZoomCap) {
+    // 把硬件 zoom 归一化到「相对最小值的倍率」，1.0x 表示不变焦
+    const min = cameraZoomCap.min || 1;
+    return hardwareZoom / min;
+  }
+  return digitalZoom;
+}
+
+function updateZoomBadge() {
+  const z = currentZoomDisplay();
+  if (Math.abs(z - 1) < 0.02) {
+    zoomBadge.classList.remove('is-visible');
+    zoomBadge.setAttribute('aria-hidden', 'true');
+  } else {
+    zoomBadge.textContent = z.toFixed(1) + 'x';
+    zoomBadge.classList.add('is-visible');
+    zoomBadge.setAttribute('aria-hidden', 'false');
+  }
+}
+
+function applyZoomRatio(ratio) {
+  if (!isFinite(ratio) || ratio <= 0) return;
+  if (isHardwareZoomActive() && cameraZoomCap) {
+    const next = clamp(hardwareZoom * ratio, cameraZoomCap.min, cameraZoomCap.max);
+    if (Math.abs(next - hardwareZoom) < (cameraZoomCap.step || 0) * 0.5) return;
+    hardwareZoom = next;
+    applyHardwareZoom(hardwareZoom);
+  } else {
+    const next = clamp(digitalZoom * ratio, DIGITAL_ZOOM_MIN, DIGITAL_ZOOM_MAX);
+    digitalZoom = next;
+  }
+  updateZoomBadge();
+}
+
+function resetZoom() {
+  if (isHardwareZoomActive() && cameraZoomCap) {
+    hardwareZoom = cameraZoomCap.min || 1;
+    applyHardwareZoom(hardwareZoom);
+  }
+  digitalZoom = 1;
+  updateZoomBadge();
+}
+
+async function detectZoomCapability() {
+  // 等一帧让 track 初始化
+  await new Promise((r) => setTimeout(r, 50));
+  cameraZoomCap = getZoomCapability();
+  hardwareZoom = cameraZoomCap ? (cameraZoomCap.min || 1) : 1;
+  digitalZoom = 1;
+  updateZoomBadge();
+}
+
 // ============== 工具 ==============
 const showToast = createToast($('toast'));
 
@@ -135,6 +212,11 @@ async function setSourceImage(file) {
     video.srcObject = null;
     currentSource = nextSource;
     disposeSource(previousSource);
+    // 切到图片源：重置 zoom（硬件 zoom 不可用，转走数字 zoom 路径）
+    cameraZoomCap = null;
+    hardwareZoom = 1;
+    digitalZoom = 1;
+    updateZoomBadge();
     applyResize();
     updateSourceUi();
     showToast('已导入图片');
@@ -160,6 +242,7 @@ async function setSourceCamera({ toast = false } = {}) {
     disposeSource(previousSource);
     applyResize();
     updateSourceUi();
+    detectZoomCapability();
     if (toast) showToast('已切回相机');
   } catch (err) {
     showToast('无法切回相机：' + (err.message || err.name));
@@ -224,6 +307,7 @@ flipBtn.addEventListener('click', async () => {
   await startCamera(video, { front: usingFront, onError: showToast });
   currentSource = cameraSource(video);
   applyResize();
+  detectZoomCapability();
 });
 
 importBtn.addEventListener('click', () => {
@@ -456,7 +540,34 @@ document.addEventListener('pointerdown', (e) => {
 bindSwipe(frameEl, {
   onLeft: () => presetStrip.next(),
   onRight: () => presetStrip.prev(),
+  // 多指 / pinch 期间不触发左右滑切预设
+  shouldIgnore: () => pinching,
 });
+
+bindPinch(frameEl, {
+  onPinchStart: () => { pinching = true; },
+  onPinch: (ratio) => applyZoomRatio(ratio),
+  onPinchEnd: () => { pinching = false; },
+  onReset: () => {
+    resetZoom();
+    showToast('变焦已重置');
+  },
+});
+
+// ============== 横屏布局 ==============
+const orientationMql = window.matchMedia('(orientation: landscape)');
+function syncOrientation() {
+  const land = orientationMql.matches;
+  appEl.classList.toggle('is-landscape', land);
+  // 强制重排取景器（aspect-ratio 变化时 video 内部分辨率可能要重算）
+  requestAnimationFrame(applyResize);
+}
+if (typeof orientationMql.addEventListener === 'function') {
+  orientationMql.addEventListener('change', syncOrientation);
+} else if (typeof orientationMql.addListener === 'function') {
+  orientationMql.addListener(syncOrientation);
+}
+syncOrientation();
 
 bindKeyboard({
   onEsc: () => {
@@ -478,7 +589,21 @@ function drawFrame() {
   if (currentSource.isReady() && canvas.width) {
     const cw = canvas.width;
     const ch = canvas.height;
-    const { uvOffset, uvScale } = centerCrop(currentSource.intrinsicW, currentSource.intrinsicH, cw, ch);
+    let { uvOffset, uvScale } = centerCrop(currentSource.intrinsicW, currentSource.intrinsicH, cw, ch);
+
+    // 数字 zoom：硬件 zoom 不可用时（导入图 / 不支持的设备）
+    // uvScale 缩小为原来的 1/zoom，uvOffset 居中调整。
+    // 硬件 zoom 路径不走这里——track 已经把视频源放大了。
+    const useDigital = !isHardwareZoomActive() && digitalZoom > 1.0001;
+    if (useDigital) {
+      const inv = 1 / digitalZoom;
+      const sx = uvScale[0] * inv;
+      const sy = uvScale[1] * inv;
+      const ox = uvOffset[0] + (uvScale[0] - sx) / 2;
+      const oy = uvOffset[1] + (uvScale[1] - sy) / 2;
+      uvScale = [sx, sy];
+      uvOffset = [ox, oy];
+    }
 
     noiseOffset = (noiseOffset + 17) & (NOISE_SIZE * NOISE_SIZE - 1);
     const nx = (noiseOffset & (NOISE_SIZE - 1)) / NOISE_SIZE;
