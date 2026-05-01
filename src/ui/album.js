@@ -2,6 +2,7 @@
 import { Gallery, DEFAULT_LABEL } from '../gallery/db.js';
 import { buildZip } from '../gallery/zip.js';
 import { openCollagePanel } from './collage.js';
+import { openStylePanel } from './style-transfer-panel.js';
 
 const LABEL_MAX_LEN = 8;
 const LONG_PRESS_MS = 500;
@@ -522,12 +523,42 @@ export function createAlbum({ refs, onToast, getActiveLabel, setActiveLabel }) {
     });
   }
 
+  // ============== 风格迁移（P2-15 实验） ==============
+  const styleBtn = document.createElement('button');
+  styleBtn.type = 'button';
+  styleBtn.className = 'icon-btn modal-style-btn';
+  styleBtn.title = '风格迁移';
+  styleBtn.setAttribute('aria-label', '风格迁移');
+  styleBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <path fill="currentColor" d="M12 3 9 9l-6 1 4.5 4-1 6 5.5-3 5.5 3-1-6L21 10l-6-1zm0 3.5 1.7 3.5 3.8.5-2.8 2.5.7 3.7-3.4-1.9-3.4 1.9.7-3.7-2.8-2.5 3.8-.5z"/>
+    </svg>
+  `;
+  // 插入到 modal-header（关闭按钮右侧、删除按钮左侧）
+  const modalHeader = closeModalBtn.parentElement;
+  if (modalHeader && deleteBtn) {
+    modalHeader.insertBefore(styleBtn, deleteBtn);
+  }
+  function openStyleTransfer() {
+    if (!currentDetail) return;
+    openStylePanel({
+      contentBlob: currentDetail.blob,
+      onToast,
+      onSaved: async () => {
+        await refreshThumb();
+        if (!album.hidden) await renderAlbum();
+        closeDetail();
+      },
+    });
+  }
+
   // bind
   thumbBtn.addEventListener('click', openAlbum);
   albumCloseBtn.addEventListener('click', closeAlbum);
   closeModalBtn.addEventListener('click', closeDetail);
   deleteBtn.addEventListener('click', deleteCurrent);
   shareBtn?.addEventListener('click', shareCurrent);
+  styleBtn.addEventListener('click', openStyleTransfer);
   albumExportBtn.addEventListener('click', exportAll);
   modalGroupPick?.addEventListener('click', pickGroupForDetail);
   collageBtn.addEventListener('click', onCollageEntry);
