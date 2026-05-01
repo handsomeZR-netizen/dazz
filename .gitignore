@@ -12,5 +12,7 @@ dist
 .worktrees
 
 # generated test fixtures (regen via scripts/make-fixtures.mjs)
-test-fixtures
+test-fixtures/*
+# 例外：identity .cube 样例随源码一起提交（供 P2-13 LUT 导入路径冒烟测试）
+!test-fixtures/identity.cube
 

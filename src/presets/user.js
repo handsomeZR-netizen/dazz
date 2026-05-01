@@ -1,17 +1,20 @@
 // 用户自定义预设：spec 持久化 + 由 spec 构造可被渲染器使用的 preset 对象。
 //
-// spec 形态（持久化于 IndexedDB userPresets store）：
+// 两种 spec 形态（共存于 IndexedDB userPresets store，按 kind 字段区分）：
+//
+// (a) 1D LUT（参数化曲线 + HSL 段），P2-12 编辑器产物，kind 缺省（向后兼容）：
 // {
-//   id: 'U_xxx',           // 'U_' 前缀以与内置 id 区分
-//   name: 'My Look',       // 显示名（也用作 chip 上的「id」短标签：取前 3 个字符大写）
-//   isUser: true,
-//   anchors: [[0,0],[0.33,0.30],[0.67,0.72],[1,1]], // 4 锚点亮度曲线（输入->输出，单调推荐但不强制）
-//   hsl: [                  // 6 段色相调整（R/Y/G/C/B/M）
-//     { h: 0, s: 0, l: 0 }, // -100..100
-//     ...
-//   ],
-//   grainAmp: 6,            // 0..20
-//   vignette: 0.2,          // 0..0.5
+//   id: 'U_xxx', name, isUser: true,
+//   anchors: [...], hsl: [...], grainAmp, vignette, stampColor,
+// }
+//
+// (b) 3D LUT（导入自 .cube），P2-13 引入：
+// {
+//   id: 'U_xxx', name, isUser: true,
+//   kind: '3d-lut',
+//   lutSize: 33,                              // N（通常 17/33/64）
+//   lutData: Uint8Array(N*N*N*3),             // 体素 r 最快、b 最慢；RGB 三个分量
+//   grainAmp: 0, vignette: 0,                 // 默认 0；3D LUT 自带颜色，不再叠默认杂项
 //   stampColor: '#ff8a3d',
 // }
 //
@@ -133,6 +136,59 @@ export function buildPresetFromSpec(spec) {
       for (const fn of bandFns) fn(x, rgb);
       return rgb;
     },
+  };
+}
+
+// 从 3D LUT spec 构造 preset 对象。preset 字段沿用内置 schema，
+// 额外携带 kind/lutSize/lutData 供 GL 渲染器走 3D 路径。
+// 同时给出从 .cube 体素「主对角线」抽出的 1D 近似 LUT，作为 CPU 路径回退。
+export function buildPresetFrom3DLutSpec(spec) {
+  const id = spec.id;
+  const name = spec.name || id;
+  const shortId = (spec.shortId || name).slice(0, 3).toUpperCase();
+  const N = spec.lutSize | 0;
+  const data = spec.lutData;
+  if (!N || !(data instanceof Uint8Array) || data.length !== N * N * N * 3) {
+    throw new Error('3D LUT spec 数据无效');
+  }
+  // 主对角线近似（r=g=b=t）抽 256 个 1D 采样：CPU 路径退化用，与 GL 路径不完全一致但够看。
+  const lutR = new Uint8ClampedArray(256);
+  const lutG = new Uint8ClampedArray(256);
+  const lutB = new Uint8ClampedArray(256);
+  for (let i = 0; i < 256; i++) {
+    const t = (i / 255) * (N - 1);
+    const i0 = Math.floor(t);
+    const i1 = Math.min(N - 1, i0 + 1);
+    const f = t - i0;
+    const off0 = (((i0 * N) + i0) * N + i0) * 3;
+    const off1 = (((i1 * N) + i1) * N + i1) * 3;
+    lutR[i] = (data[off0 + 0] * (1 - f) + data[off1 + 0] * f) | 0;
+    lutG[i] = (data[off0 + 1] * (1 - f) + data[off1 + 1] * f) | 0;
+    lutB[i] = (data[off0 + 2] * (1 - f) + data[off1 + 2] * f) | 0;
+  }
+  return {
+    id,
+    shortId,
+    name,
+    desc: `${shortId} · ${name}`,
+    stampColor: spec.stampColor || '#7fc8ff',
+    stampGlow: hexToGlow(spec.stampColor || '#7fc8ff'),
+    brandLabel: shortId + '-CUBE',
+    developMs: 0,
+    grainAmp: clamp(spec.grainAmp ?? 0, 0, 20),
+    vignette: clamp(spec.vignette ?? 0, 0, 0.5),
+    mono: false,
+    leak: false,
+    isUser: true,
+    spec,
+    // 3D LUT 渲染所需字段
+    kind: '3d-lut',
+    lutSize: N,
+    lutData: data,
+    // 1D 退化字段，CPU 路径与 buildLut 直接复用
+    lutR,
+    lutG,
+    lutB,
   };
 }
 

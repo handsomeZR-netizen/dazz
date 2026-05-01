@@ -10,7 +10,14 @@ import { pro400h } from './pro400h.js';
 import { hp5 } from './hp5.js';
 import { lomo } from './lomo.js';
 import { Gallery } from '../gallery/db.js';
-import { buildPresetFromSpec } from './user.js';
+import { buildPresetFromSpec, buildPresetFrom3DLutSpec } from './user.js';
+
+// 把任意 user spec → preset。kind === '3d-lut' 走 3D LUT 路径（不再 buildLut，
+// 3D 自带主对角线 1D 退化字段；GL 路径走真三线性）；否则走原参数化路径。
+function buildAnyUserPreset(spec) {
+  if (spec?.kind === '3d-lut') return buildPresetFrom3DLutSpec(spec);
+  return buildLut(buildPresetFromSpec(spec));
+}
 
 // 内置 10 款预设。PRESETS 是一个可变数组（运行时会向尾部 push 用户预设）。
 // 任何引用方都应直接读取 PRESETS（数组身份不变，只 push/splice），见 ui/preset-strip.js。
@@ -32,7 +39,7 @@ export async function loadAndAttachUserPresets() {
   const attached = [];
   for (const spec of specs) {
     try {
-      const preset = buildLut(buildPresetFromSpec(spec));
+      const preset = buildAnyUserPreset(spec);
       PRESETS.push(preset);
       attached.push(preset);
     } catch (e) {
@@ -44,7 +51,7 @@ export async function loadAndAttachUserPresets() {
 
 // 添加一条用户 spec（外部已经写入 IndexedDB）。返回构造好的 preset，已 push 到 PRESETS 末尾。
 export function attachUserSpec(spec) {
-  const preset = buildLut(buildPresetFromSpec(spec));
+  const preset = buildAnyUserPreset(spec);
   PRESETS.push(preset);
   return preset;
 }
