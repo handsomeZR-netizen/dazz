@@ -79,6 +79,8 @@
   box-shadow:
     inset 0 0 0 1px rgba(0, 0, 0, 0.6),
     0 0 0 1px rgba(255, 255, 255, 0.05);
+  /* 双指 pinch 由 JS 处理，禁用浏览器默认 pan/zoom 让 pointermove 可以 preventDefault */
+  touch-action: none;
 }
 
 /* 画幅切换：3:4 / 1:1 / 16:9 / 9:16 */
