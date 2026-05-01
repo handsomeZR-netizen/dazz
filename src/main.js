@@ -18,6 +18,7 @@ import { bindKeyboard } from './input/keyboard.js';
 import { cameraSource, imageSource } from './source.js';
 import { processBatch } from './batch.js';
 import { centerCrop } from './utils/frame.js';
+import { createRecorder, isVideoSupported, formatElapsed, makeVideoFilename } from './recorder.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -31,6 +32,8 @@ const dateBtn = $('dateBtn');
 const borderBtn = $('borderBtn');
 const ratioBtn = $('ratioBtn');
 const effectsBtn = $('effectsBtn');
+const videoBtn = $('videoBtn');
+const recTimeEl = $('recTime');
 const fxDrawer = $('fxDrawer');
 const shutterBtn = $('shutterBtn');
 const filterBtn = $('filterBtn');
@@ -245,7 +248,115 @@ function doShutter() {
     albumLabel: activeLabel,
   });
 }
-shutterBtn.addEventListener('click', doShutter);
+
+// ============== 视频录制 ==============
+const VIDEO_MAX_SEC = 60;
+let videoMode = false;
+let recorder = null;
+let videoSupported = isVideoSupported();
+
+function updateRecTime(ms) {
+  recTimeEl.textContent = formatElapsed(ms);
+}
+
+function downloadVideo(blob, mimeType, extension) {
+  const filename = makeVideoFilename(presetStrip.current?.id, extension);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // 让浏览器拿到 blob 后再回收
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+function startVideoRecording() {
+  if (recorder?.isRecording()) return;
+  recorder = createRecorder({
+    canvas,
+    fps: 30,
+    maxSec: VIDEO_MAX_SEC,
+    onTick: (ms) => updateRecTime(ms),
+    onStop: ({ blob, mimeType, extension, durationMs }) => {
+      shutterBtn.classList.remove('recording');
+      recTimeEl.hidden = true;
+      updateRecTime(0);
+      if (!blob || blob.size === 0) {
+        showToast('录制失败：无数据');
+        return;
+      }
+      downloadVideo(blob, mimeType, extension);
+      showToast(`已保存视频 · ${formatElapsed(durationMs)}`);
+    },
+    onError: (err) => {
+      shutterBtn.classList.remove('recording');
+      recTimeEl.hidden = true;
+      showToast('录制失败：' + (err?.message || err?.name || 'unknown'));
+    },
+  });
+  if (!recorder) {
+    showToast('当前浏览器不支持视频录制');
+    return;
+  }
+  const ok = recorder.start();
+  if (!ok) return;
+  shutterBtn.classList.add('recording');
+  recTimeEl.hidden = false;
+  updateRecTime(0);
+}
+
+function stopVideoRecording() {
+  if (!recorder?.isRecording()) return;
+  recorder.stop();
+}
+
+function setVideoMode(on) {
+  if (on && !videoSupported) {
+    showToast('当前浏览器不支持视频录制');
+    return;
+  }
+  videoMode = on;
+  videoBtn.classList.toggle('is-active', on);
+  videoBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  shutterBtn.classList.toggle('video-mode', on);
+  shutterBtn.setAttribute('aria-label', on ? '录制视频' : '拍照');
+  if (!on) {
+    if (recorder?.isRecording()) recorder.stop();
+    shutterBtn.classList.remove('recording');
+    recTimeEl.hidden = true;
+    updateRecTime(0);
+  }
+}
+
+function onShutterAction() {
+  if (videoMode) {
+    if (recorder?.isRecording()) {
+      stopVideoRecording();
+    } else {
+      startVideoRecording();
+    }
+    return;
+  }
+  doShutter();
+}
+
+shutterBtn.addEventListener('click', onShutterAction);
+
+if (!videoSupported) {
+  videoBtn.classList.add('is-disabled');
+  videoBtn.setAttribute('aria-disabled', 'true');
+  videoBtn.title = '当前浏览器不支持视频录制';
+}
+
+videoBtn.addEventListener('click', () => {
+  if (!videoSupported) {
+    showToast('当前浏览器不支持视频录制');
+    return;
+  }
+  setVideoMode(!videoMode);
+});
 
 // ============== 顶栏交互 ==============
 flipBtn.addEventListener('click', async () => {
@@ -501,7 +612,7 @@ bindKeyboard({
   },
   onLeft: () => presetStrip.prev(),
   onRight: () => presetStrip.next(),
-  onShutter: doShutter,
+  onShutter: onShutterAction,
   anyOverlayOpen: () => albumApi.isDetailOpen() || albumApi.isAlbumOpen() || !fxDrawer.hidden,
 });
 

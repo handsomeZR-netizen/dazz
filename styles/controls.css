@@ -69,6 +69,25 @@
   background: #ff8a3d;
 }
 
+/* 视频模式：快门红色圆点 */
+.shutter.video-mode .shutter-core {
+  background: #ff3b30;
+}
+.shutter.video-mode.recording .shutter-ring {
+  border-color: #ff3b30;
+  animation: shutterPulse 1.2s ease-in-out infinite;
+}
+.shutter.video-mode.recording .shutter-core {
+  background: #ff3b30;
+  border-radius: 6px;
+  inset: 24px;
+  transition: inset 0.18s ease, border-radius 0.18s ease;
+}
+@keyframes shutterPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.55); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 59, 48, 0); }
+}
+
 .filter-wrap {
   position: relative;
   justify-self: end;
