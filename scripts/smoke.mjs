@@ -117,7 +117,8 @@ async function main() {
     const t0 = Date.now();
     await page.goto(PREVIEW_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#preview', { timeout: 5000 });
-    const chips = await page.$$('.preset-chip');
+    // 只算实际预设 chip（排除 + 新建 / LUT / 匹配 这些 action chip）
+    const chips = await page.$$('.preset-chip:not(.preset-chip-add):not(.preset-chip-match)');
     record('L0 启动', chips.length === 10, `${chips.length} preset chips, ${Date.now() - t0}ms`);
 
     // ====== L1: 切预设 ======
@@ -229,8 +230,21 @@ async function main() {
     const collageBtn = await page.$('.album-collage-btn');
     record('L9 拼贴按钮存在', !!collageBtn);
 
-    // ====== L10: 控制台无错误 ======
-    record('L10 控制台无错误', consoleErrors.length === 0,
+    // ====== L10: P2 入口存在 ======
+    // 关掉详情/相册回到主页面
+    await page.evaluate(() => {
+      document.getElementById('modal')?.setAttribute('hidden', '');
+      document.getElementById('album')?.setAttribute('hidden', '');
+    });
+    const addChip = await page.$('.preset-chip-add');
+    const matchChip = await page.$('.preset-chip-match');
+    const videoBtn = await page.$('#videoBtn');
+    record('L10 P2 入口（编辑器/匹配/视频）',
+      !!addChip && !!matchChip && !!videoBtn,
+      `addChip=${!!addChip} matchChip=${!!matchChip} videoBtn=${!!videoBtn}`);
+
+    // ====== L11: 控制台无错误 ======
+    record('L11 控制台无错误', consoleErrors.length === 0,
       consoleErrors.length ? `${consoleErrors.length} errors: ${consoleErrors[0].slice(0, 80)}` : '');
   } finally {
     await browser.close();
