@@ -111,6 +111,53 @@
     rgba(255, 255, 255, 0.18) 3px 6px
   );
 }
+/* Portra 400 — 暖灰金属（人像金标） */
+.body[data-preset="P"] {
+  --chassis: linear-gradient(180deg, #d8c8b3 0%, #6e5b46 100%);
+  --brand-color: #3a2a1a;
+  --dial-fg: #3a2a1a;
+  --dial-bg: #b09478;
+}
+/* CineStill 800T — 墨绿黑（钨丝灯电影感） */
+.body[data-preset="C"] {
+  --chassis: linear-gradient(180deg, #1a2620 0%, #050a08 100%);
+  --brand-color: #ff8a99;
+  --dial-fg: #4a605a;
+  --dial-bg: #0a1410;
+}
+/* Ektar 100 — 金红色（风光金标） */
+.body[data-preset="E"] {
+  --chassis: linear-gradient(180deg, #e85a1a 0%, #6a1a05 100%);
+  --brand-color: #ffe0a0;
+  --dial-fg: #2a0a05;
+  --dial-bg: #a82a0a;
+}
+/* Pro 400H — 薄荷绿（pastel 婚摄） */
+.body[data-preset="H"] {
+  --chassis: linear-gradient(180deg, #b8d8c2 0%, #5a7e6a 100%);
+  --brand-color: #1a2a20;
+  --dial-fg: #1a2a20;
+  --dial-bg: #8eb89a;
+}
+/* HP5 — 哑光石墨（B&W 经典） */
+.body[data-preset="I"] {
+  --chassis: linear-gradient(180deg, #3a3a3a 0%, #1a1a1a 100%);
+  --brand-color: #d0d0d0;
+  --dial-fg: #6a6a6a;
+  --dial-bg: #2a2a2a;
+}
+/* Lomo — LC-A 经典黑配红字 */
+.body[data-preset="L"] {
+  --chassis: linear-gradient(180deg, #1f1f1f 0%, #050505 100%);
+  --brand-color: #ff3da0;
+  --dial-fg: #6a1a3a;
+  --dial-bg: #1a0a10;
+  --grip-bg: repeating-linear-gradient(
+    45deg,
+    rgba(255, 61, 160, 0.18) 0 2px,
+    rgba(0, 0, 0, 0.45) 2px 4px
+  );
+}
 
 #video {
   display: none; /* 隐藏原始流，统一用 canvas 渲染 */
