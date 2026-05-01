@@ -66,3 +66,78 @@
 }
 .fx-toggle.on .fx-status { color: var(--accent); }
 .fx-toggle.armed .fx-status { color: #ff5b5b; }
+
+/* halation / fisheye 的"开关 + 滑杆"复合行 */
+.fx-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+}
+.fx-row-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: 130px;
+  padding: 4px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.fx-row-head:active { opacity: 0.85; }
+.fx-toggle-row .fx-name {
+  font-size: 14px;
+}
+.fx-toggle-row .fx-status {
+  font-size: 11px;
+}
+
+.fx-range {
+  flex: 1 1 auto;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: #2a2a2a;
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+  padding: 0;
+}
+.fx-range:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.fx-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--muted);
+  border: 2px solid #0f0f0f;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.fx-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--muted);
+  border: 2px solid #0f0f0f;
+  cursor: pointer;
+}
+.fx-toggle-row.on .fx-range::-webkit-slider-thumb {
+  background: var(--accent);
+}
+.fx-toggle-row.on .fx-range::-moz-range-thumb {
+  background: var(--accent);
+}
+.fx-range:disabled::-webkit-slider-thumb { cursor: not-allowed; }
+.fx-range:disabled::-moz-range-thumb { cursor: not-allowed; }

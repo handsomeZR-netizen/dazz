@@ -141,14 +141,20 @@
       <div class="fx-drawer-inner">
         <div class="fx-drawer-handle"></div>
         <h3 class="fx-title">特效</h3>
-        <button class="fx-toggle" data-fx="halation">
-          <span class="fx-name">光晕 / Halation</span>
-          <span class="fx-status">关</span>
-        </button>
-        <button class="fx-toggle" data-fx="fisheye">
-          <span class="fx-name">鱼眼 / Fisheye</span>
-          <span class="fx-status">关</span>
-        </button>
+        <div class="fx-toggle fx-toggle-row" data-fx="halation">
+          <button type="button" class="fx-row-head">
+            <span class="fx-name">光晕 / Halation</span>
+            <span class="fx-status">关</span>
+          </button>
+          <input type="range" class="fx-range" min="0" max="100" value="0" disabled aria-label="光晕强度" />
+        </div>
+        <div class="fx-toggle fx-toggle-row" data-fx="fisheye">
+          <button type="button" class="fx-row-head">
+            <span class="fx-name">鱼眼 / Fisheye</span>
+            <span class="fx-status">关</span>
+          </button>
+          <input type="range" class="fx-range" min="0" max="100" value="0" disabled aria-label="鱼眼强度" />
+        </div>
         <button class="fx-toggle" data-fx="flash" data-arm="true">
           <span class="fx-name">闪光灯 / Flash</span>
           <span class="fx-status">关</span>
