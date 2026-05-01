@@ -115,3 +115,42 @@
   letter-spacing: 0.1em;
 }
 .album-empty[hidden] { display: none; }
+
+/* 多选模式 */
+.album.is-selecting .album-cell { cursor: pointer; }
+.album-cell.is-selected {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+  border-radius: 4px;
+}
+.album-cell.is-selected::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%231a0d05' d='M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z'/></svg>") center/14px no-repeat;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  z-index: 1;
+}
+
+.album-header.album-header-selection { gap: 12px; }
+.album-header.album-header-selection[hidden] { display: none; }
+.album-next-btn {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  background: var(--accent);
+  color: #1a0d05;
+}
+.album-next-btn:disabled {
+  background: #2a2a2a;
+  color: #555;
+  cursor: not-allowed;
+}
