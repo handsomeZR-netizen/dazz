@@ -88,9 +88,24 @@
         <span class="shutter-core"></span>
       </button>
 
-      <button class="filter-btn" id="filterBtn" aria-label="切换强度">
-        <span id="strengthLabel">100</span>
-      </button>
+      <div class="filter-wrap">
+        <button class="filter-btn" id="filterBtn" aria-label="切换强度">
+          <span id="strengthLabel">100</span>
+        </button>
+        <div class="strength-slider" id="strengthSlider" hidden aria-hidden="true">
+          <span class="strength-slider-value" id="strengthSliderValue">100</span>
+          <input
+            type="range"
+            id="strengthRange"
+            min="0"
+            max="100"
+            step="1"
+            value="100"
+            orient="vertical"
+            aria-label="滤镜强度"
+          />
+        </div>
+      </div>
     </footer>
 
     <!-- 胶卷相册 -->

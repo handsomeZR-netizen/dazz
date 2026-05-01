@@ -1,0 +1,113 @@
+/* 滤镜强度浮层滑杆：长按 filterBtn 弹出，竖向 0..100 */
+.strength-slider {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  width: 56px;
+  padding: 12px 8px 10px;
+  background: rgba(20, 20, 20, 0.96);
+  border: 1px solid #2a2a2a;
+  border-radius: 14px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms ease;
+  z-index: 30;
+  touch-action: none;
+}
+
+.strength-slider:not([hidden]) {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.strength-slider[hidden] {
+  display: flex;
+}
+
+.strength-slider::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 10px;
+  height: 10px;
+  background: rgba(20, 20, 20, 0.96);
+  border-right: 1px solid #2a2a2a;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.strength-slider-value {
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  min-height: 14px;
+}
+
+/* 竖向 input range：常见做法是旋转 */
+.strength-slider input[type="range"] {
+  -webkit-appearance: slider-vertical; /* Chrome/Safari 旧版 */
+  appearance: slider-vertical;
+  writing-mode: vertical-lr; /* 现代标准 */
+  direction: rtl; /* 让 0 在底，100 在顶 */
+  width: 28px;
+  height: 140px;
+  background: transparent;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* 不支持 vertical 时兜底（Firefox 老版本 / 个别 WebView） */
+@supports not ((writing-mode: vertical-lr) or (-webkit-appearance: slider-vertical)) {
+  .strength-slider input[type="range"] {
+    transform: rotate(-90deg);
+    width: 140px;
+    height: 28px;
+    margin: 56px -56px;
+  }
+}
+
+.strength-slider input[type="range"]::-webkit-slider-runnable-track {
+  width: 4px;
+  background: #2a2a2a;
+  border-radius: 4px;
+}
+.strength-slider input[type="range"]::-moz-range-track {
+  width: 4px;
+  background: #2a2a2a;
+  border-radius: 4px;
+}
+.strength-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #1a0d05;
+  box-shadow: 0 0 0 1px rgba(255, 138, 61, 0.4);
+  cursor: pointer;
+  margin-left: -6px; /* 对齐 4px 轨道 */
+}
+.strength-slider input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #1a0d05;
+  box-shadow: 0 0 0 1px rgba(255, 138, 61, 0.4);
+  cursor: pointer;
+}
+.strength-slider input[type="range"]:focus {
+  outline: none;
+}
