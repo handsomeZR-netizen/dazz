@@ -81,6 +81,12 @@
     0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
+/* 画幅切换：3:4 / 1:1 / 16:9 / 9:16 */
+.frame[data-aspect="3:4"]  { aspect-ratio: 3 / 4; }
+.frame[data-aspect="1:1"]  { aspect-ratio: 1 / 1; }
+.frame[data-aspect="16:9"] { aspect-ratio: 16 / 9; }
+.frame[data-aspect="9:16"] { aspect-ratio: 9 / 16; }
+
 /* 预设皮肤 */
 .body[data-preset="NC"] {
   --chassis: linear-gradient(180deg, #221b15 0%, #0e0a07 100%);
