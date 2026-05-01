@@ -179,14 +179,16 @@ async function main() {
       `shareBtn hidden=${shareHidden}, download=${(downloadHref || '').slice(0, 32)}`);
 
     // ====== L5: PWA artifacts ======
-    const manifestRes = await page.request.get(`${PREVIEW_URL}/manifest.webmanifest`);
-    const swRes = await page.request.get(`${PREVIEW_URL}/sw.js`);
-    const manifestJson = manifestRes.ok() ? await manifestRes.json() : null;
+    // Use plain Node fetch (NODE_TLS_REJECT_UNAUTHORIZED=0) — page.request goes
+    // through the SW which routes anything-not-precached back to index.html.
+    const manifestRes = await fetch(`${PREVIEW_URL}/manifest.webmanifest`);
+    const swRes = await fetch(`${PREVIEW_URL}/sw.js`);
+    const manifestJson = manifestRes.ok ? await manifestRes.json() : null;
     const swReady = await page.evaluate(() => navigator.serviceWorker?.ready?.then(() => true).catch(() => false) || false);
     const swActivated = swReady === true;
     record('L5 PWA manifest+sw',
-      manifestRes.ok() && swRes.ok() && manifestJson?.name === 'Dazz Web' && swActivated,
-      `manifest ${manifestRes.status()}, sw ${swRes.status()}, name="${manifestJson?.name}", swReady=${swActivated}`);
+      manifestRes.ok && swRes.ok && manifestJson?.name === 'Dazz Web' && swActivated,
+      `manifest ${manifestRes.status}, sw ${swRes.status}, name="${manifestJson?.name}", swReady=${swActivated}`);
 
     // ====== L6: 离线访问 ======
     await context.setOffline(true);
@@ -201,8 +203,34 @@ async function main() {
     record('L6 离线刷新', offlineOk);
     await context.setOffline(false);
 
-    // ====== L7: console 错误 ======
-    record('L7 控制台无错误', consoleErrors.length === 0,
+    // ====== L7: 画幅切换 (P1-8) ======
+    await context.setOffline(false);
+    const ratioStates = [];
+    for (let i = 0; i < 4; i++) {
+      await page.click('#ratioBtn');
+      await sleep(120);
+      ratioStates.push(await page.$eval('.frame', (el) => el.dataset.aspect));
+    }
+    // 期望循环一遍后，结尾正好回到起点的下一个（4 次点击 = 完整循环）
+    const distinctAspects = new Set(ratioStates);
+    record('L7 画幅切换 4 比例', distinctAspects.size === 4,
+      `seen=[${ratioStates.join(',')}]`);
+
+    // ====== L8: 相册分组 tab (P1-9) ======
+    await page.click('#thumbBtn');
+    await sleep(300);
+    const tabs = await page.$$('#albumTabs .album-tab, #albumTabs .album-tab-add');
+    const tabsCount = tabs.length;
+    const allTabText = await page.$eval('#albumTabs .album-tab', (el) => el.textContent.trim()).catch(() => '');
+    record('L8 相册分组 tab 条', tabsCount >= 2 && /ALL/.test(allTabText),
+      `tabs=${tabsCount}, first="${allTabText}"`);
+
+    // ====== L9: 拼贴入口 (P1-11) ======
+    const collageBtn = await page.$('.album-collage-btn');
+    record('L9 拼贴按钮存在', !!collageBtn);
+
+    // ====== L10: 控制台无错误 ======
+    record('L10 控制台无错误', consoleErrors.length === 0,
       consoleErrors.length ? `${consoleErrors.length} errors: ${consoleErrors[0].slice(0, 80)}` : '');
   } finally {
     await browser.close();
