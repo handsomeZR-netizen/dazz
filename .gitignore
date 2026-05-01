@@ -10,3 +10,7 @@ dist
 
 # local worktrees nested under repo root
 .worktrees
+
+# generated test fixtures (regen via scripts/make-fixtures.mjs)
+test-fixtures
+
