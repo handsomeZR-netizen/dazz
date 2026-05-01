@@ -1,4 +1,5 @@
 .topbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -20,6 +21,46 @@
 .topbar-right {
   display: flex;
   gap: 8px;
+}
+
+.rec-time {
+  position: absolute;
+  left: 50%;
+  top: max(env(safe-area-inset-top), 14px);
+  transform: translateX(-50%);
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: #fff;
+  background: rgba(255, 59, 48, 0.85);
+  padding: 4px 10px;
+  border-radius: 999px;
+  z-index: 6;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rec-time::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  animation: recDotBlink 1s steps(2, start) infinite;
+}
+@keyframes recDotBlink {
+  to { opacity: 0.2; }
+}
+.rec-time[hidden] { display: none; }
+
+#videoBtn.is-active {
+  color: #ff3b30;
+  border-color: rgba(255, 59, 48, 0.55);
+}
+#videoBtn.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
 }
 
 .icon-btn {
