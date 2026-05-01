@@ -33,6 +33,9 @@ const fxDrawer = $('fxDrawer');
 const shutterBtn = $('shutterBtn');
 const filterBtn = $('filterBtn');
 const strengthLabel = $('strengthLabel');
+const strengthSlider = $('strengthSlider');
+const strengthRange = $('strengthRange');
+const strengthSliderValue = $('strengthSliderValue');
 const datestampEl = $('datestamp');
 const flashEl = $('flash');
 const filterTag = $('filterTag');
@@ -246,12 +249,178 @@ dateBtn.addEventListener('click', () => {
   showToast(showDate ? '日期戳：开' : '日期戳：关');
 });
 
-filterBtn.addEventListener('click', () => {
+// ============== 强度控制：短按循环 + 长按浮层滑杆 ==============
+const LONG_PRESS_MS = 350;
+const LONG_PRESS_MOVE_PX = 8; // 超过则取消长按（视为滚动/取消）
+const SLIDER_AUTOHIDE_MS = 1500;
+
+function cycleStrengthStep() {
   strengthIdx = (strengthIdx + 1) % strengthSteps.length;
   strength = strengthSteps[strengthIdx];
   strengthLabel.textContent = strengthLabels[strengthIdx];
+  // 若滑杆正显示，也保持视觉同步
+  if (!strengthSlider.hidden) {
+    const pct = Math.round(strength * 100);
+    strengthRange.value = String(pct);
+    strengthSliderValue.textContent = String(pct);
+  }
   showToast('滤镜强度 ' + strengthLabels[strengthIdx]);
+}
+
+function setStrengthDirect(value01) {
+  // 直接设置 strength（绕过 4 档离散步进），并把 strengthIdx 同步到「最近档」用于下次短按起点。
+  const v = Math.max(0, Math.min(1, value01));
+  strength = v;
+  // 显示百分比（整数）
+  const pct = Math.round(v * 100);
+  strengthLabel.textContent = String(pct);
+  // 把 strengthIdx 对齐到最近的预设档，使后续短按从合理位置起步
+  let bestIdx = 0;
+  let bestDiff = Infinity;
+  for (let i = 0; i < strengthSteps.length; i += 1) {
+    const d = Math.abs(strengthSteps[i] - v);
+    if (d < bestDiff) { bestDiff = d; bestIdx = i; }
+  }
+  strengthIdx = bestIdx;
+}
+
+let pressTimer = null;
+let pressStartX = 0;
+let pressStartY = 0;
+let pressActivePointerId = null;
+let longPressTriggered = false;
+let pressMoved = false;
+let sliderAutoHideTimer = null;
+let sliderInteracting = false;
+
+function clearPressTimer() {
+  if (pressTimer != null) {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+  }
+}
+
+function clearAutoHide() {
+  if (sliderAutoHideTimer != null) {
+    clearTimeout(sliderAutoHideTimer);
+    sliderAutoHideTimer = null;
+  }
+}
+
+function showSlider() {
+  clearAutoHide();
+  // 同步 range 当前值到 strength
+  strengthRange.value = String(Math.round(strength * 100));
+  strengthSliderValue.textContent = strengthRange.value;
+  strengthSlider.hidden = false;
+  strengthSlider.setAttribute('aria-hidden', 'false');
+}
+
+function hideSlider() {
+  clearAutoHide();
+  strengthSlider.hidden = true;
+  strengthSlider.setAttribute('aria-hidden', 'true');
+  sliderInteracting = false;
+  filterBtn.classList.remove('is-pressed');
+}
+
+function scheduleAutoHide() {
+  clearAutoHide();
+  sliderAutoHideTimer = setTimeout(() => {
+    if (!sliderInteracting) hideSlider();
+  }, SLIDER_AUTOHIDE_MS);
+}
+
+filterBtn.addEventListener('pointerdown', (e) => {
+  // 仅响应主指针 / 主按钮（鼠标左键、触摸、笔）
+  if (e.button !== undefined && e.button !== 0) return;
+  pressActivePointerId = e.pointerId;
+  pressStartX = e.clientX;
+  pressStartY = e.clientY;
+  longPressTriggered = false;
+  pressMoved = false;
+  filterBtn.classList.add('is-pressed');
+  clearPressTimer();
+  pressTimer = setTimeout(() => {
+    longPressTriggered = true;
+    showSlider();
+  }, LONG_PRESS_MS);
 });
+
+filterBtn.addEventListener('pointermove', (e) => {
+  if (pressActivePointerId !== e.pointerId) return;
+  const dx = e.clientX - pressStartX;
+  const dy = e.clientY - pressStartY;
+  if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_PX) {
+    pressMoved = true;
+    if (!longPressTriggered) clearPressTimer();
+  }
+});
+
+function endPress(e) {
+  if (e && pressActivePointerId !== e.pointerId) return;
+  clearPressTimer();
+  filterBtn.classList.remove('is-pressed');
+  const wasLong = longPressTriggered;
+  const wasMoved = pressMoved;
+  pressActivePointerId = null;
+  if (wasLong) {
+    // 长按结束：1500ms 后自动隐藏（除非用户继续与 slider 交互）
+    if (!sliderInteracting) scheduleAutoHide();
+  } else if (!wasMoved) {
+    // 短按：循环 4 档
+    cycleStrengthStep();
+  }
+  longPressTriggered = false;
+  pressMoved = false;
+}
+
+filterBtn.addEventListener('pointerup', endPress);
+filterBtn.addEventListener('pointercancel', endPress);
+filterBtn.addEventListener('pointerleave', (e) => {
+  // 指针离开按钮但未抬起时也取消长按计时（避免悬停滑出后才弹出）
+  if (pressActivePointerId !== e.pointerId) return;
+  if (longPressTriggered) return; // 已弹出滑杆则保留
+  clearPressTimer();
+});
+
+// 阻止短按转成 click 后又触发额外的 click 副作用：filterBtn 没有原 click 处理了。
+// 但保留键盘可达性：Enter/Space 键也走短按循环。
+filterBtn.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    cycleStrengthStep();
+  }
+});
+
+// ============== 滑杆交互 ==============
+strengthRange.addEventListener('pointerdown', () => {
+  sliderInteracting = true;
+  clearAutoHide();
+});
+
+strengthRange.addEventListener('input', () => {
+  const pct = Number(strengthRange.value);
+  strengthSliderValue.textContent = String(pct);
+  setStrengthDirect(pct / 100);
+});
+
+function endSliderInteraction() {
+  if (!sliderInteracting) return;
+  sliderInteracting = false;
+  scheduleAutoHide();
+}
+strengthRange.addEventListener('pointerup', endSliderInteraction);
+strengthRange.addEventListener('pointercancel', endSliderInteraction);
+strengthRange.addEventListener('change', endSliderInteraction);
+
+// 点击其它位置即时隐藏
+document.addEventListener('pointerdown', (e) => {
+  if (strengthSlider.hidden) return;
+  if (strengthSlider.contains(e.target)) return;
+  if (filterBtn.contains(e.target)) return;
+  hideSlider();
+}, true);
 
 // ============== 输入 ==============
 bindSwipe(frameEl, {
