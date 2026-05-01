@@ -2,13 +2,14 @@
 // 用户预设 chip 右上角带 × 删除按钮（点击触发 onDeleteUser）。
 import { PRESETS } from '../presets/index.js';
 
-export function createPresetStrip({ stripEl, refs, onChange, onDeleteUser, onAdd }) {
+export function createPresetStrip({ stripEl, refs, onChange, onDeleteUser, onAdd, onMatch }) {
   const { filterTag, brandEl, datestampEl, bodyEl, bodyBrand } = refs;
 
   function build() {
     stripEl.innerHTML = '';
     PRESETS.forEach((p, i) => stripEl.appendChild(buildChip(p, i)));
     if (onAdd) stripEl.appendChild(buildAddChip());
+    if (onMatch) stripEl.appendChild(buildMatchChip());
   }
 
   function buildChip(p, i) {
@@ -44,6 +45,16 @@ export function createPresetStrip({ stripEl, refs, onChange, onDeleteUser, onAdd
     btn.setAttribute('aria-label', '新建自定义预设');
     btn.innerHTML = '<span class="chip-id">+</span><span class="chip-name">新建</span>';
     btn.addEventListener('click', () => onAdd?.());
+    return btn;
+  }
+
+  function buildMatchChip() {
+    const btn = document.createElement('button');
+    btn.className = 'preset-chip preset-chip-match';
+    btn.title = '匹配参考图';
+    btn.setAttribute('aria-label', '匹配参考图');
+    btn.innerHTML = '<span class="chip-id">★</span><span class="chip-name">匹配</span>';
+    btn.addEventListener('click', () => onMatch?.());
     return btn;
   }
 
