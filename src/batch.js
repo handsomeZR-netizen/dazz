@@ -28,7 +28,7 @@ async function processOne(file, ctx, opts) {
   const source = await imageSource(file);
   try {
     const { canvas, renderer } = ctx;
-    const dim = resizeCanvas(canvas, source.intrinsicW, source.intrinsicH, { hasGL: opts.hasGL });
+    const dim = resizeCanvas(canvas, source.intrinsicW, source.intrinsicH, { hasGL: opts.hasGL, target: opts.target });
     const { w, h } = dim;
     const { uvOffset, uvScale } = centerCrop(source.intrinsicW, source.intrinsicH, w, h);
     const preset = opts.preset;

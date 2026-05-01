@@ -28,6 +28,7 @@ const importBtn = $('importBtn');
 const importInput = $('importInput');
 const dateBtn = $('dateBtn');
 const borderBtn = $('borderBtn');
+const ratioBtn = $('ratioBtn');
 const effectsBtn = $('effectsBtn');
 const fxDrawer = $('fxDrawer');
 const shutterBtn = $('shutterBtn');
@@ -71,6 +72,11 @@ let borderIdx = 0;
 let currentSource = cameraSource(video);
 let sourceChangeSeq = 0;
 
+const ASPECT_TARGETS = { '3:4': 3 / 4, '1:1': 1, '16:9': 16 / 9, '9:16': 9 / 16 };
+const ASPECT_ORDER = ['3:4', '1:1', '16:9', '9:16'];
+let currentAspect = '3:4';
+frameEl.dataset.aspect = currentAspect;
+
 const effects = { halation: 0, fisheye: 0, flash: 0 };
 let flashArmed = false;
 let flashFlare = 0;
@@ -88,7 +94,8 @@ if (!hasGL) {
 
 function applyResize() {
   if (!currentSource.intrinsicW || !currentSource.intrinsicH) return;
-  const dim = resizeCanvas(canvas, currentSource.intrinsicW, currentSource.intrinsicH, { hasGL });
+  const target = ASPECT_TARGETS[currentAspect];
+  const dim = resizeCanvas(canvas, currentSource.intrinsicW, currentSource.intrinsicH, { hasGL, target });
   if (dim) renderer.setSize(dim.w, dim.h);
 }
 
@@ -221,6 +228,7 @@ importInput.addEventListener('change', async () => {
     showDate,
     strength,
     hasGL,
+    target: ASPECT_TARGETS[currentAspect],
     onProgress: ({ current, total }) => showToast(`批量处理 ${current}/${total}`),
     onError: (err, file) => {
       const name = file?.name ? `${file.name}：` : '';
@@ -238,6 +246,14 @@ borderBtn.addEventListener('click', () => {
   const id = BORDER_ORDER[borderIdx];
   frameEl.dataset.border = id;
   showToast('边框：' + BORDER_LABELS[id]);
+});
+
+ratioBtn.addEventListener('click', () => {
+  const idx = ASPECT_ORDER.indexOf(currentAspect);
+  currentAspect = ASPECT_ORDER[(idx + 1) % ASPECT_ORDER.length];
+  frameEl.dataset.aspect = currentAspect;
+  applyResize();
+  showToast('画幅：' + currentAspect);
 });
 
 dateBtn.addEventListener('click', () => {
