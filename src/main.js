@@ -13,6 +13,7 @@ import { createPresetStrip } from './ui/preset-strip.js';
 import { createFxDrawer } from './ui/fx-drawer.js';
 import { createAlbum } from './ui/album.js';
 import { createEditor } from './ui/editor.js';
+import { createCubeImporter } from './ui/cube-import.js';
 import { bindSwipe } from './input/gestures.js';
 import { bindKeyboard } from './input/keyboard.js';
 import { bindPinch } from './input/pinch.js';
@@ -261,6 +262,7 @@ const presetStrip = createPresetStrip({
     renderer.setPreset(preset);
   },
   onAdd: () => editor.open(),
+  onImportCube: () => cubeImporter.openPicker(),
   onDeleteUser: (preset) => handleDeleteUserPreset(preset),
 });
 presetStrip.build();
@@ -279,6 +281,22 @@ const editor = createEditor({
     presetStrip.rebuild(preset.id);
     showToast('已保存：' + spec.name);
   },
+});
+
+// ============== .cube 3D LUT 导入 ==============
+const cubeImporter = createCubeImporter({
+  onSave: async (spec) => {
+    try {
+      await Gallery.userPresetsPut(spec);
+    } catch (e) {
+      showToast('保存失败：' + (e?.message || e));
+      return;
+    }
+    const preset = attachUserSpec(spec);
+    presetStrip.rebuild(preset.id);
+    showToast('已导入 LUT：' + spec.name);
+  },
+  onError: (msg) => showToast(msg),
 });
 
 function handleDeleteUserPreset(preset) {

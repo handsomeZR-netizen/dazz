@@ -1,5 +1,6 @@
 import { VS_SOURCE, FS_SOURCE } from './shaders.js';
 import { NOISE_SIZE, noiseUnsigned } from './noise.js';
+import { cubeToTexture } from '../lut3d.js';
 
 export function createGLRenderer(cvs) {
   const gl = cvs.getContext('webgl2', {
@@ -57,6 +58,7 @@ export function createGLRenderer(cvs) {
     'uVideo', 'uLut', 'uNoise', 'uStrength', 'uGrainAmp', 'uVignette',
     'uLeak', 'uMono', 'uNoiseShift', 'uResolution', 'uUvOffset', 'uUvScale',
     'uMirror', 'uHalation', 'uFisheye', 'uFlash',
+    'uLut3D', 'uUse3DLut', 'uLutSize',
   ]) {
     u[name] = gl.getUniformLocation(prog, name);
   }
@@ -87,10 +89,29 @@ export function createGLRenderer(cvs) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, NOISE_SIZE, NOISE_SIZE, 0, gl.RED, gl.UNSIGNED_BYTE, noiseUnsigned);
 
+  // 3D LUT 切片纹理（z 切片横排 → 2D 图，宽 = N*N，高 = N）
+  // 注意：z 维度由 fragment shader 手动两次采样混合，所以 wrap 必须 CLAMP_TO_EDGE，
+  // mag/min 用 LINEAR 让 xy 维度走硬件双线性。
+  const lut3dTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE3);
+  gl.bindTexture(gl.TEXTURE_2D, lut3dTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  // 占位：1x1 像素，避免 sampler 未绑定导致的 incomplete 警告
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0]));
+  let cur3DSize = 0;
+
   gl.uniform1i(u.uVideo, 0);
   gl.uniform1i(u.uLut, 1);
   gl.uniform1i(u.uNoise, 2);
+  gl.uniform1i(u.uLut3D, 3);
+  gl.uniform1f(u.uUse3DLut, 0.0);
+  gl.uniform1f(u.uLutSize, 1.0);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  // 上传 3D LUT 时是 RGB（行字节 = 宽*3），不能强制 4 字节对齐
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
 
   return {
     kind: 'gl',
@@ -99,6 +120,7 @@ export function createGLRenderer(cvs) {
       gl.viewport(0, 0, w, h);
     },
     setPreset(p) {
+      // 1D LUT 总是上传一份（即使是 3D 预设也带主对角线退化版，方便 strength=0 mix 时一致性）
       const lutData = new Uint8Array(256 * 4);
       for (let i = 0; i < 256; i++) {
         lutData[i * 4 + 0] = p.lutR[i];
@@ -109,6 +131,22 @@ export function createGLRenderer(cvs) {
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, lutTex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, lutData);
+
+      if (p.kind === '3d-lut' && p.lutSize && p.lutData) {
+        const N = p.lutSize | 0;
+        const tex = cubeToTexture({ size: N, data: p.lutData });
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, lut3dTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, tex.texW, tex.texH, 0, gl.RGB, gl.UNSIGNED_BYTE, tex.texPixels);
+        cur3DSize = N;
+        gl.useProgram(prog);
+        gl.uniform1f(u.uUse3DLut, 1.0);
+        gl.uniform1f(u.uLutSize, N);
+      } else {
+        cur3DSize = 0;
+        gl.useProgram(prog);
+        gl.uniform1f(u.uUse3DLut, 0.0);
+      }
     },
     // source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement | ImageBitmap
     draw(source, opts) {
