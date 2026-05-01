@@ -4,6 +4,7 @@ import { createRenderer } from './renderer/index.js';
 import { resizeCanvas } from './camera.js';
 import { imageSource } from './source.js';
 import { centerCrop } from './utils/frame.js';
+import { injectExif, makeDazzExifFields } from './utils/exif.js';
 
 const MAX_PHOTOS = 200;
 
@@ -49,7 +50,16 @@ async function processOne(file, ctx, opts) {
     const borderId = BORDER_ORDER[opts.borderIdx] || BORDER_ORDER[0];
     const out = composeOutput(canvas, borderId, preset, opts.showDate);
     const blob = await canvasToBlob(out);
-    await Gallery.add(blob, {
+    let stamped = blob;
+    try {
+      stamped = await injectExif(
+        blob,
+        makeDazzExifFields({ presetId: preset.id, borderId, takenAt: new Date() }),
+      );
+    } catch {
+      stamped = blob;
+    }
+    await Gallery.add(stamped, {
       presetId: preset.id,
       borderId,
       developMs: preset.developMs || 0,

@@ -1,6 +1,7 @@
 // 拍照管线：触发闪屏动画 → 边框合成 + 水印 → toBlob 入库 → 缩略图刷新。
 import { Gallery } from './gallery/db.js';
 import { composeOutput, BORDER_ORDER } from './borders.js';
+import { injectExif, makeDazzExifFields } from './utils/exif.js';
 
 const MAX_PHOTOS = 200;
 
@@ -47,7 +48,17 @@ function doCapture({ canvas, flashEl, preset, borderIdx, showDate, onToast, onSa
       return;
     }
     try {
-      await Gallery.add(blob, { presetId, borderId, developMs });
+      let stamped = blob;
+      try {
+        stamped = await injectExif(
+          blob,
+          makeDazzExifFields({ presetId, borderId, takenAt: new Date() }),
+        );
+      } catch {
+        // EXIF 注入失败不影响主流程，回退到原始 blob
+        stamped = blob;
+      }
+      await Gallery.add(stamped, { presetId, borderId, developMs });
       const dropped = await Gallery.trim(MAX_PHOTOS);
       if (dropped) onToast?.(`已保留最近 ${MAX_PHOTOS} 张`);
       else if (developMs > 0) onToast?.(`已捕获 · 显影 ${(developMs / 1000).toFixed(1)}s`);
