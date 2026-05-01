@@ -1,7 +1,7 @@
 // Dazz Web — 入口编排：DOM 绑定 / 渲染主循环 / 各模块串联
 import '../styles/index.css';
 
-import { PRESETS } from './presets/index.js';
+import { PRESETS, loadAndAttachUserPresets, attachUserSpec, detachUserPreset } from './presets/index.js';
 import { createRenderer, NOISE_SIZE } from './renderer/index.js';
 import { startCamera, stopCamera, resizeCanvas } from './camera.js';
 import { capture } from './capture.js';
@@ -12,6 +12,7 @@ import { createToast } from './ui/toast.js';
 import { createPresetStrip } from './ui/preset-strip.js';
 import { createFxDrawer } from './ui/fx-drawer.js';
 import { createAlbum } from './ui/album.js';
+import { createEditor } from './ui/editor.js';
 import { bindSwipe } from './input/gestures.js';
 import { bindKeyboard } from './input/keyboard.js';
 import { cameraSource, imageSource } from './source.js';
@@ -173,9 +174,41 @@ const presetStrip = createPresetStrip({
   onChange(preset) {
     renderer.setPreset(preset);
   },
+  onAdd: () => editor.open(),
+  onDeleteUser: (preset) => handleDeleteUserPreset(preset),
 });
 presetStrip.build();
 presetStrip.setPreset(0);
+
+// ============== 自定义滤镜编辑器 ==============
+const editor = createEditor({
+  onSave: async (spec) => {
+    try {
+      await Gallery.userPresetsPut(spec);
+    } catch (e) {
+      showToast('保存失败：' + (e?.message || e));
+      throw e;
+    }
+    const preset = attachUserSpec(spec);
+    presetStrip.rebuild(preset.id);
+    showToast('已保存：' + spec.name);
+  },
+});
+
+function handleDeleteUserPreset(preset) {
+  if (!preset?.isUser) return;
+  if (!confirm(`删除自定义预设「${preset.name}」？`)) return;
+  Gallery.userPresetsDelete(preset.id)
+    .then(() => {
+      const prevActiveId = presetStrip.current?.id;
+      const wasActive = prevActiveId === preset.id;
+      detachUserPreset(preset.id);
+      // 已删除当前激活预设：回退到第一项（NC）；否则保留之前的激活 id
+      presetStrip.rebuild(wasActive ? PRESETS[0]?.id : prevActiveId);
+      showToast('已删除：' + preset.name);
+    })
+    .catch((e) => showToast('删除失败：' + (e?.message || e)));
+}
 
 // ============== 特效抽屉 ==============
 createFxDrawer({
@@ -517,7 +550,15 @@ video.addEventListener('loadedmetadata', applyResize);
 updateSourceUi();
 
 Gallery.open()
-  .then(albumApi.refreshThumb)
+  .then(async () => {
+    try {
+      const attached = await loadAndAttachUserPresets();
+      if (attached.length) presetStrip.rebuild(presetStrip.current?.id);
+    } catch (e) {
+      console.warn('[main] load user presets failed', e);
+    }
+    await albumApi.refreshThumb();
+  })
   .catch((err) => showToast('胶卷库不可用：' + err.message));
 
 requestAnimationFrame(drawFrame);
