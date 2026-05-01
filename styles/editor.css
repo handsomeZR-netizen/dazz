@@ -228,6 +228,13 @@
   line-height: 1;
 }
 
+/* 预设条上的「★ 匹配」chip */
+.preset-chip-match .chip-id {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--accent);
+}
+
 /* 用户预设 chip 的删除按钮 */
 .preset-chip { position: relative; }
 .chip-del {

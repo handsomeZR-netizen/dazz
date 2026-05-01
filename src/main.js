@@ -18,6 +18,8 @@ import { bindSwipe } from './input/gestures.js';
 import { bindKeyboard } from './input/keyboard.js';
 import { bindPinch } from './input/pinch.js';
 import { cameraSource, imageSource } from './source.js';
+import { analyzeReference } from './match.js';
+import { newUserPresetId, validateName } from './presets/user.js';
 import { processBatch } from './batch.js';
 import { centerCrop } from './utils/frame.js';
 import { createRecorder, isVideoSupported, formatElapsed, makeVideoFilename } from './recorder.js';
@@ -263,6 +265,7 @@ const presetStrip = createPresetStrip({
   },
   onAdd: () => editor.open(),
   onImportCube: () => cubeImporter.openPicker(),
+  onMatch: () => triggerMatchPicker(),
   onDeleteUser: (preset) => handleDeleteUserPreset(preset),
 });
 presetStrip.build();
@@ -297,6 +300,62 @@ const cubeImporter = createCubeImporter({
     showToast('已导入 LUT：' + spec.name);
   },
   onError: (msg) => showToast(msg),
+});
+
+// ============== 自动色彩匹配（P2-17） ==============
+// 隐藏的 file input：点击「★ 匹配」chip 时触发选图
+const matchInput = document.createElement('input');
+matchInput.type = 'file';
+matchInput.accept = 'image/*';
+matchInput.hidden = true;
+matchInput.style.display = 'none';
+document.body.appendChild(matchInput);
+
+let matchAnalyzing = false;
+
+function triggerMatchPicker() {
+  if (matchAnalyzing) return;
+  matchInput.value = '';
+  matchInput.click();
+}
+
+matchInput.addEventListener('change', async () => {
+  const file = matchInput.files?.[0];
+  if (!file) return;
+  if (matchAnalyzing) return;
+  matchAnalyzing = true;
+  showToast('分析中…');
+  try {
+    const spec = await analyzeReference(file);
+    // 命名：默认从文件名推；让用户改一次（可空 → 用默认）
+    const suggested = spec.name || '匹配';
+    const input = window.prompt('为这个匹配预设命名（1-12 字符）', suggested);
+    if (input === null) {
+      // 用户取消
+      matchAnalyzing = false;
+      return;
+    }
+    const finalName = (input || '').trim() || suggested;
+    const err = validateName(finalName);
+    if (err) {
+      showToast('保存失败：' + err);
+      matchAnalyzing = false;
+      return;
+    }
+    spec.name = finalName.slice(0, 12);
+    spec.shortId = spec.name.replace(/\s+/g, '').slice(0, 3).toUpperCase() || 'MTC';
+    spec.id = newUserPresetId();
+    // 持久化 + 挂载
+    await Gallery.userPresetsPut(spec);
+    const preset = attachUserSpec(spec);
+    presetStrip.rebuild(preset.id);
+    const elapsed = spec.analyzeMs != null ? ` (${spec.analyzeMs}ms)` : '';
+    showToast('已生成预设：' + spec.name + elapsed);
+  } catch (e) {
+    showToast('匹配失败：' + (e?.message || e));
+  } finally {
+    matchAnalyzing = false;
+  }
 });
 
 function handleDeleteUserPreset(preset) {

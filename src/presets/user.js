@@ -87,33 +87,51 @@ export function makeCurve(anchors) {
 // 把 spec 转成 preset 对象（不 buildLut，由调用方决定 / 或在 attachLut 之后挂上）。
 // preset 形态与内置一致：{ id, name, desc, stampColor, stampGlow, brandLabel, developMs,
 //                         grainAmp, vignette, mono, leak, curve(x)->[r,g,b] }
+//
+// 当 spec.channelAnchors 存在（P2-17 自动色彩匹配）时，curve 直接用三条独立曲线，
+// 不再叠 HSL 段（match 出来的 hsl 全 0，叠了也无效，但跳过更省 CPU）。
 export function buildPresetFromSpec(spec) {
-  const curve = makeCurve(spec.anchors);
-  // 每段贡献的 rgb 偏移因子（saturation 让 tint 拉向其 rgb，lightness 全通道整体抬升）
-  const bandFns = (spec.hsl || []).slice(0, HSL_BANDS.length).map((cfg, idx) => {
-    const band = HSL_BANDS[idx];
-    const sNorm = (cfg.s || 0) / 100;
-    const lNorm = (cfg.l || 0) / 100;
-    const hueShift = (cfg.h || 0) / 100; // 在 -1..1 之间，向相邻段倾斜
-    // 简单 hue shift：对该段的 rgb 与「相邻 mu」rgb 之间插值
-    const next = HSL_BANDS[(idx + 1) % HSL_BANDS.length].rgb;
-    const prev = HSL_BANDS[(idx + HSL_BANDS.length - 1) % HSL_BANDS.length].rgb;
-    const dir = hueShift >= 0
-      ? lerp3(band.rgb, next, hueShift)
-      : lerp3(band.rgb, prev, -hueShift);
-    return function apply(x, rgb) {
-      const w = gauss(x, band.mu, BAND_SIGMA);
-      // saturation：把当前 [y,y,y] 拉向 dir 方向（dir - y）
-      const y = (rgb[0] + rgb[1] + rgb[2]) / 3;
-      rgb[0] += sNorm * w * (dir[0] - y) + lNorm * w * 0.18;
-      rgb[1] += sNorm * w * (dir[1] - y) + lNorm * w * 0.18;
-      rgb[2] += sNorm * w * (dir[2] - y) + lNorm * w * 0.18;
-    };
-  });
-
   const id = spec.id;
   const name = spec.name || id;
   const shortId = (spec.shortId || name).slice(0, 3).toUpperCase();
+  const isMatch = spec.kind === 'match' && spec.channelAnchors;
+
+  let curveFn;
+  if (isMatch) {
+    const cR = makeCurve(spec.channelAnchors.r);
+    const cG = makeCurve(spec.channelAnchors.g);
+    const cB = makeCurve(spec.channelAnchors.b);
+    curveFn = (x) => [cR(x), cG(x), cB(x)];
+  } else {
+    const curve = makeCurve(spec.anchors);
+    // 每段贡献的 rgb 偏移因子（saturation 让 tint 拉向其 rgb，lightness 全通道整体抬升）
+    const bandFns = (spec.hsl || []).slice(0, HSL_BANDS.length).map((cfg, idx) => {
+      const band = HSL_BANDS[idx];
+      const sNorm = (cfg.s || 0) / 100;
+      const lNorm = (cfg.l || 0) / 100;
+      const hueShift = (cfg.h || 0) / 100; // 在 -1..1 之间，向相邻段倾斜
+      // 简单 hue shift：对该段的 rgb 与「相邻 mu」rgb 之间插值
+      const next = HSL_BANDS[(idx + 1) % HSL_BANDS.length].rgb;
+      const prev = HSL_BANDS[(idx + HSL_BANDS.length - 1) % HSL_BANDS.length].rgb;
+      const dir = hueShift >= 0
+        ? lerp3(band.rgb, next, hueShift)
+        : lerp3(band.rgb, prev, -hueShift);
+      return function apply(x, rgb) {
+        const w = gauss(x, band.mu, BAND_SIGMA);
+        // saturation：把当前 [y,y,y] 拉向 dir 方向（dir - y）
+        const y = (rgb[0] + rgb[1] + rgb[2]) / 3;
+        rgb[0] += sNorm * w * (dir[0] - y) + lNorm * w * 0.18;
+        rgb[1] += sNorm * w * (dir[1] - y) + lNorm * w * 0.18;
+        rgb[2] += sNorm * w * (dir[2] - y) + lNorm * w * 0.18;
+      };
+    });
+    curveFn = (x) => {
+      const y = curve(x);
+      const rgb = [y, y, y];
+      for (const fn of bandFns) fn(x, rgb);
+      return rgb;
+    };
+  }
 
   return {
     id,
@@ -122,7 +140,7 @@ export function buildPresetFromSpec(spec) {
     desc: `${shortId} · ${name}`,
     stampColor: spec.stampColor || '#ff8a3d',
     stampGlow: hexToGlow(spec.stampColor || '#ff8a3d'),
-    brandLabel: shortId + '-USR',
+    brandLabel: shortId + (isMatch ? '-MTC' : '-USR'),
     developMs: 0,
     grainAmp: clamp(spec.grainAmp ?? 6, 0, 20),
     vignette: clamp(spec.vignette ?? 0.2, 0, 0.5),
@@ -130,12 +148,7 @@ export function buildPresetFromSpec(spec) {
     leak: false,
     isUser: true,
     spec, // 保留原始 spec，便于「再编辑」（未来）
-    curve(x) {
-      const y = curve(x);
-      const rgb = [y, y, y];
-      for (const fn of bandFns) fn(x, rgb);
-      return rgb;
-    },
+    curve: curveFn,
   };
 }
 

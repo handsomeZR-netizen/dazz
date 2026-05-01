@@ -2,7 +2,7 @@
 // 用户预设 chip 右上角带 × 删除按钮（点击触发 onDeleteUser）。
 import { PRESETS } from '../presets/index.js';
 
-export function createPresetStrip({ stripEl, refs, onChange, onDeleteUser, onAdd, onImportCube }) {
+export function createPresetStrip({ stripEl, refs, onChange, onDeleteUser, onAdd, onImportCube, onMatch }) {
   const { filterTag, brandEl, datestampEl, bodyEl, bodyBrand } = refs;
 
   function build() {
@@ -10,6 +10,7 @@ export function createPresetStrip({ stripEl, refs, onChange, onDeleteUser, onAdd
     PRESETS.forEach((p, i) => stripEl.appendChild(buildChip(p, i)));
     if (onAdd) stripEl.appendChild(buildAddChip());
     if (onImportCube) stripEl.appendChild(buildImportCubeChip());
+    if (onMatch) stripEl.appendChild(buildMatchChip());
   }
 
   function buildChip(p, i) {
@@ -55,6 +56,16 @@ export function createPresetStrip({ stripEl, refs, onChange, onDeleteUser, onAdd
     btn.setAttribute('aria-label', '导入 .cube 3D LUT');
     btn.innerHTML = '<span class="chip-id">⤓</span><span class="chip-name">LUT</span>';
     btn.addEventListener('click', () => onImportCube?.());
+    return btn;
+  }
+
+  function buildMatchChip() {
+    const btn = document.createElement('button');
+    btn.className = 'preset-chip preset-chip-match';
+    btn.title = '匹配参考图';
+    btn.setAttribute('aria-label', '匹配参考图');
+    btn.innerHTML = '<span class="chip-id">★</span><span class="chip-name">匹配</span>';
+    btn.addEventListener('click', () => onMatch?.());
     return btn;
   }
 
