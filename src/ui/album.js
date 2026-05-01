@@ -1,10 +1,12 @@
-// 胶卷相册 + 详情视图 + 缩略图刷新 + 显影动画 + zip 导出。
+// 胶卷相册 + 详情视图 + 缩略图刷新 + 显影动画 + zip 导出 + 多选拼贴。
 import { Gallery } from '../gallery/db.js';
 import { buildZip } from '../gallery/zip.js';
+import { openCollagePanel } from './collage.js';
 
 export function createAlbum({ refs, onToast }) {
   const {
     album, albumGrid, albumEmpty, albumCloseBtn, albumExportBtn, albumCountEl,
+    albumHeader, albumTitleEl,
     modal, modalImg, modalMeta, closeModalBtn, deleteBtn, shareBtn, downloadBtn,
     thumbBtn, thumbCount,
   } = refs;
@@ -12,6 +14,51 @@ export function createAlbum({ refs, onToast }) {
   let currentDetail = null;
   let thumbObjUrl = null;
   let detailObjUrl = null;
+
+  // 多选状态
+  let selectionMode = false;
+  const selectedIds = new Set();
+  let cachedItems = []; // 上一次 renderAlbum 的 items（用于 collage 时取 blob）
+  let collageOpen = false;
+
+  // ============== 多选 UI（动态创建） ==============
+  const collageBtn = document.createElement('button');
+  collageBtn.type = 'button';
+  collageBtn.className = 'icon-btn album-collage-btn';
+  collageBtn.title = '拼贴';
+  collageBtn.setAttribute('aria-label', '拼贴');
+  collageBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <rect x="3" y="3" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <rect x="13" y="3" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <rect x="3" y="13" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <rect x="13" y="13" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    </svg>
+  `;
+  // 插到 export 按钮之前
+  if (albumExportBtn?.parentElement) {
+    albumExportBtn.parentElement.insertBefore(collageBtn, albumExportBtn);
+  }
+
+  // 选中工具栏（接管 album-header 显示）：「取消 · 已选 N 张 · 下一步」
+  const selectionBar = document.createElement('header');
+  selectionBar.className = 'album-header album-header-selection';
+  selectionBar.hidden = true;
+  selectionBar.innerHTML = `
+    <button type="button" class="icon-btn" data-act="cancel" aria-label="取消多选">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+      </svg>
+    </button>
+    <h2 class="album-title">已选 <span data-role="count">0</span> 张</h2>
+    <button type="button" class="primary album-next-btn" data-act="next">下一步</button>
+  `;
+  // 紧跟原 album-header 之后
+  const baseHeader = albumHeader || albumExportBtn?.closest('.album-header');
+  if (baseHeader?.parentElement) {
+    baseHeader.parentElement.insertBefore(selectionBar, baseHeader.nextSibling);
+  }
+  const selectionCountEl = selectionBar.querySelector('[data-role="count"]');
 
   function isDeveloped(rec) {
     if (!rec.developMs) return true;
@@ -91,6 +138,7 @@ export function createAlbum({ refs, onToast }) {
   }
 
   function closeAlbum() {
+    if (selectionMode) exitSelectionMode({ silent: true });
     album.hidden = true;
     albumGrid.querySelectorAll('.album-cell').forEach((cell) => {
       const u = cell.dataset.url;
@@ -101,6 +149,7 @@ export function createAlbum({ refs, onToast }) {
 
   async function renderAlbum() {
     const items = await Gallery.list();
+    cachedItems = items;
     albumCountEl.textContent = String(items.length);
     albumGrid.innerHTML = '';
     if (items.length === 0) {
@@ -117,15 +166,61 @@ export function createAlbum({ refs, onToast }) {
       cell.dataset.id = it.id;
       cell.dataset.preset = it.presetId || '';
       cell.style.backgroundImage = `url(${url})`;
-      cell.addEventListener('click', () => openDetail(it));
+      cell.addEventListener('click', () => onCellClick(it, cell));
       const remaining = remainingDevelop(it);
       if (remaining > 0) {
         cell.classList.add('developing');
         requestAnimationFrame(() => playDevelop(cell, remaining));
       }
+      if (selectionMode && selectedIds.has(it.id)) {
+        cell.classList.add('is-selected');
+      }
       frag.appendChild(cell);
     }
     albumGrid.appendChild(frag);
+  }
+
+  function onCellClick(rec, cell) {
+    if (selectionMode) {
+      toggleSelected(rec.id, cell);
+    } else {
+      openDetail(rec);
+    }
+  }
+
+  function toggleSelected(id, cell) {
+    if (selectedIds.has(id)) {
+      selectedIds.delete(id);
+      cell.classList.remove('is-selected');
+    } else {
+      selectedIds.add(id);
+      cell.classList.add('is-selected');
+    }
+    selectionCountEl.textContent = String(selectedIds.size);
+    selectionBar.querySelector('.album-next-btn').disabled = selectedIds.size < 2;
+  }
+
+  function enterSelectionMode() {
+    if (selectionMode) return;
+    selectionMode = true;
+    selectedIds.clear();
+    album.classList.add('is-selecting');
+    if (baseHeader) baseHeader.hidden = true;
+    selectionBar.hidden = false;
+    selectionCountEl.textContent = '0';
+    selectionBar.querySelector('.album-next-btn').disabled = true;
+  }
+
+  function exitSelectionMode({ silent } = {}) {
+    if (!selectionMode) return;
+    selectionMode = false;
+    selectedIds.clear();
+    album.classList.remove('is-selecting');
+    if (baseHeader) baseHeader.hidden = false;
+    selectionBar.hidden = true;
+    // 清掉每个 cell 的 selected 视觉
+    albumGrid.querySelectorAll('.album-cell.is-selected').forEach((c) => c.classList.remove('is-selected'));
+    if (!silent) onToast?.('已取消多选');
   }
 
   function openDetail(rec) {
@@ -213,6 +308,37 @@ export function createAlbum({ refs, onToast }) {
     }
   }
 
+  function onCollageEntry() {
+    if (cachedItems.length < 2) {
+      onToast?.('至少需要 2 张照片');
+      return;
+    }
+    enterSelectionMode();
+  }
+
+  function gotoCollagePreview() {
+    if (selectedIds.size < 2) {
+      onToast?.('至少选 2 张');
+      return;
+    }
+    // 按当前 cachedItems 顺序提取（保持时间倒序）
+    const picks = cachedItems.filter((it) => selectedIds.has(it.id));
+    if (picks.length < 2) {
+      onToast?.('选中数据丢失');
+      return;
+    }
+    collageOpen = true;
+    openCollagePanel({
+      items: picks,
+      onToast,
+      onClose: () => {
+        collageOpen = false;
+        // 退出多选回到普通相册
+        exitSelectionMode({ silent: true });
+      },
+    });
+  }
+
   // bind
   thumbBtn.addEventListener('click', openAlbum);
   albumCloseBtn.addEventListener('click', closeAlbum);
@@ -220,6 +346,12 @@ export function createAlbum({ refs, onToast }) {
   deleteBtn.addEventListener('click', deleteCurrent);
   shareBtn?.addEventListener('click', shareCurrent);
   albumExportBtn.addEventListener('click', exportAll);
+  collageBtn.addEventListener('click', onCollageEntry);
+  selectionBar.addEventListener('click', (e) => {
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'cancel') exitSelectionMode();
+    else if (act === 'next') gotoCollagePreview();
+  });
 
   return {
     refreshThumb,
@@ -228,5 +360,8 @@ export function createAlbum({ refs, onToast }) {
     closeDetail,
     isAlbumOpen() { return !album.hidden; },
     isDetailOpen() { return !modal.hidden; },
+    isSelectionMode() { return selectionMode; },
+    isCollageOpen() { return collageOpen; },
+    exitSelectionMode,
   };
 }

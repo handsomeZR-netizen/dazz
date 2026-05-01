@@ -1,0 +1,129 @@
+.collage-panel {
+  position: fixed;
+  inset: 0;
+  background: #0a0a0a;
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.25s ease-out;
+}
+.collage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: max(env(safe-area-inset-top), 14px) 18px 12px;
+  border-bottom: 1px solid #1a1a1a;
+}
+.collage-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+  text-align: center;
+}
+.collage-export {
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+}
+.collage-export:disabled {
+  background: #2a2a2a;
+  color: #555;
+  cursor: progress;
+}
+
+.collage-preview-wrap {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  min-height: 0;
+  overflow: auto;
+}
+.collage-preview-inner {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.collage-preview-img {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  border-radius: 4px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+.collage-preview-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--ink);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  border-radius: 4px;
+}
+.collage-preview-loading[hidden] { display: none; }
+
+.collage-controls {
+  padding: 12px 18px max(env(safe-area-inset-bottom), 18px);
+  border-top: 1px solid #1a1a1a;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.collage-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.collage-row-label {
+  width: 48px;
+  flex-shrink: 0;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.collage-seg {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+}
+.collage-seg button {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #2a2a2a;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--ink);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: transform 0.1s ease, border-color 0.15s ease;
+}
+.collage-seg button:active { transform: scale(0.96); }
+.collage-seg button.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.collage-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid #2a2a2a;
+  display: inline-block;
+}

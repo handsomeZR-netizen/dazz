@@ -53,6 +53,7 @@ const albumRefs = {
   albumCloseBtn: $('albumClose'),
   albumExportBtn: $('albumExport'),
   albumCountEl: $('albumCount'),
+  albumHeader: document.querySelector('#album .album-header'),
   modal: $('modal'),
   modalImg: $('modalImg'),
   modalMeta: $('modalMeta'),
@@ -446,7 +447,9 @@ bindSwipe(frameEl, {
 
 bindKeyboard({
   onEsc: () => {
+    if (albumApi.isCollageOpen?.()) return; // collage 面板自己处理 ESC
     if (albumApi.isDetailOpen()) { albumApi.closeDetail(); return; }
+    if (albumApi.isSelectionMode?.()) { albumApi.exitSelectionMode(); return; }
     if (albumApi.isAlbumOpen()) { albumApi.closeAlbum(); return; }
     if (!fxDrawer.hidden) { fxDrawer.hidden = true; }
   },
