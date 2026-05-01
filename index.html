@@ -119,17 +119,20 @@
     <!-- 胶卷相册 -->
     <section class="album" id="album" hidden>
       <header class="album-header">
-        <button class="icon-btn" id="albumClose" aria-label="返回">
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path fill="currentColor" d="M15.41 16.59 10.83 12l4.58-4.59L14 6l-6 6 6 6z"/>
-          </svg>
-        </button>
-        <h2 class="album-title">胶卷 · <span id="albumCount">0</span></h2>
-        <button class="icon-btn" id="albumExport" aria-label="导出全部">
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
-          </svg>
-        </button>
+        <div class="album-header-row">
+          <button class="icon-btn" id="albumClose" aria-label="返回">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path fill="currentColor" d="M15.41 16.59 10.83 12l4.58-4.59L14 6l-6 6 6 6z"/>
+            </svg>
+          </button>
+          <h2 class="album-title">胶卷 · <span id="albumCount">0</span></h2>
+          <button class="icon-btn" id="albumExport" aria-label="导出全部">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+            </svg>
+          </button>
+        </div>
+        <nav class="album-tabs" id="albumTabs" aria-label="分组"></nav>
       </header>
       <div class="album-grid" id="albumGrid"></div>
       <div class="album-empty" id="albumEmpty">还没有拍过照片</div>
@@ -152,6 +155,13 @@
       </header>
       <div class="modal-img-wrap">
         <img id="modalImg" alt="拍摄结果" />
+      </div>
+      <div class="modal-group-row">
+        <span class="modal-group-label">分组</span>
+        <button type="button" class="modal-group-pick" id="modalGroupPick" aria-haspopup="true">
+          <span id="modalGroupName">ALL</span>
+          <span class="modal-group-caret" aria-hidden="true">▾</span>
+        </button>
       </div>
       <footer class="modal-actions">
         <button type="button" class="primary" id="shareBtn" hidden>分享 / 保存</button>

@@ -11,6 +11,7 @@ export const FX_DEFAULTS = { halation: 0.55, fisheye: 0.5, flash: 0.85 };
 export function capture({
   canvas, flashEl, fxDrawer, preset, borderIdx, showDate,
   flashArmed, setFlashArmed, setFlashFlare, hasGL, onToast, onSaved,
+  albumLabel,
 }) {
   if (!canvas.width) return;
   if (flashArmed && hasGL) {
@@ -23,15 +24,15 @@ export function capture({
     }
     requestAnimationFrame(() =>
       requestAnimationFrame(() =>
-        doCapture({ canvas, flashEl, preset, borderIdx, showDate, onToast, onSaved }),
+        doCapture({ canvas, flashEl, preset, borderIdx, showDate, onToast, onSaved, albumLabel }),
       ),
     );
   } else {
-    doCapture({ canvas, flashEl, preset, borderIdx, showDate, onToast, onSaved });
+    doCapture({ canvas, flashEl, preset, borderIdx, showDate, onToast, onSaved, albumLabel });
   }
 }
 
-function doCapture({ canvas, flashEl, preset, borderIdx, showDate, onToast, onSaved }) {
+function doCapture({ canvas, flashEl, preset, borderIdx, showDate, onToast, onSaved, albumLabel }) {
   flashEl.classList.remove('fire');
   void flashEl.offsetWidth;
   flashEl.classList.add('fire');
@@ -47,7 +48,7 @@ function doCapture({ canvas, flashEl, preset, borderIdx, showDate, onToast, onSa
       return;
     }
     try {
-      await Gallery.add(blob, { presetId, borderId, developMs });
+      await Gallery.add(blob, { presetId, borderId, developMs, albumLabel });
       const dropped = await Gallery.trim(MAX_PHOTOS);
       if (dropped) onToast?.(`已保留最近 ${MAX_PHOTOS} 张`);
       else if (developMs > 0) onToast?.(`已捕获 · 显影 ${(developMs / 1000).toFixed(1)}s`);

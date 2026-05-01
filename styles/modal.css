@@ -33,6 +33,37 @@
   background: #000;
   object-fit: contain;
 }
+.modal-group-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 24px 0;
+}
+.modal-group-label {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+}
+.modal-group-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid #2a2a2a;
+  background: #141414;
+  color: var(--ink);
+  border-radius: 999px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.modal-group-pick:active { transform: scale(0.97); }
+.modal-group-caret {
+  font-size: 10px;
+  color: var(--muted);
+}
+
 .modal-actions {
   display: flex;
   gap: 10px;

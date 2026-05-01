@@ -16,10 +16,15 @@
 
 .album-header {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: max(env(safe-area-inset-top), 14px) 18px 8px;
+  border-bottom: 1px solid #1a1a1a;
+}
+.album-header-row {
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: max(env(safe-area-inset-top), 14px) 18px 12px;
-  border-bottom: 1px solid #1a1a1a;
 }
 .album-title {
   margin: 0;
@@ -27,6 +32,49 @@
   font-weight: 600;
   letter-spacing: 0.1em;
   color: var(--ink);
+}
+
+/* 分组 tab 条 */
+.album-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 6px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.album-tabs::-webkit-scrollbar { display: none; }
+
+.album-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 6px 12px;
+  border: 1px solid #2a2a2a;
+  background: #141414;
+  color: var(--ink);
+  border-radius: 999px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+.album-tab:active { transform: scale(0.96); }
+.album-tab.active {
+  border-color: var(--accent);
+  background: #1f1610;
+  color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.album-tab.add {
+  font-size: 16px;
+  line-height: 1;
+  padding: 6px 12px;
+  color: var(--muted);
 }
 .album-grid {
   flex: 1;
